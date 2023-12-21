@@ -7,6 +7,5 @@ import {Peeps} from "../src/Peeps.sol";
 contract PeepsTest is Test {
     Peeps public peeps;
 
-    function setUp() public {
-    }
+    function setUp() public {}
 }
