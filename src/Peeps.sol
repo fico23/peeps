@@ -38,8 +38,7 @@ contract Peeps {
     uint256 public totalSupply;
 
     // Bits Layout:
-    // - [0..31]    `ends`
-    // - [32..95]   `bought`
+    // - [0..95]    `bought`
     // - [96..159]  `paid`
     // - [160..255] `amount`
     mapping(address => uint256) internal _balanceOf;
@@ -67,10 +66,8 @@ contract Peeps {
     uint256 internal immutable INITIAL_CHAIN_ID;
     bytes32 internal immutable INITIAL_DOMAIN_SEPARATOR;
 
-    uint256 internal constant ENDS_OFFSET = 224;
     uint256 internal constant BOUGHT_OFFSET = 160;
     uint256 internal constant PAID_OFFSET = 96;
-    uint256 internal constant MASK_32 = 0xffffffff;
     uint256 internal constant MASK_64 = 0xffffffffffffffff;
     uint256 internal constant MASK_96 = 0xffffffffffffffffffffffff;
 
@@ -201,16 +198,11 @@ contract Peeps {
                         INTERNAL MINT/BURN LOGIC
     //////////////////////////////////////////////////////////////*/
 
-    function _parseBalanceInfo(address addr)
-        internal
-        view
-        returns (uint256 ends, uint256 paid, uint256 bought, uint256 amount)
-    {
+    function _parseBalanceInfo(address addr) internal view returns (uint256 bought, uint256 paid, uint256 amount) {
         uint256 balanceInfo = _balanceOf[addr];
 
-        ends = balanceInfo >> ENDS_OFFSET;
+        bought = balanceInfo >> BOUGHT_OFFSET;
         paid = balanceInfo >> PAID_OFFSET & MASK_64;
-        bought = balanceInfo >> BOUGHT_OFFSET & MASK_64;
         amount = balanceInfo & MASK_96;
     }
 
@@ -230,26 +222,22 @@ contract Peeps {
     }
 
     function _transfer(address from, address to, uint256 amount) internal {
-        (uint256 fromEnds, uint256 fromPaid, uint256 fromBought, uint256 fromAmount) = _parseBalanceInfo(from);
-        (uint256 toEnds, uint256 toPaid, uint256 toBought, uint256 toAmount) = _parseBalanceInfo(to);
+        (uint256 fromBought, uint256 fromPaid, uint256 fromAmount) = _parseBalanceInfo(from);
+        (uint256 toBought, uint256 toPaid, uint256 toAmount) = _parseBalanceInfo(to);
 
         fromAmount -= amount;
 
         if (to == UNI_V2_PAIR) {
-            if (fromEnds > block.timestamp) {
-                _updateBalanceInfoEnded(from, fromAmount);
-            } else {
-                // tax
-                (uint256 reserveToken, uint256 reserveWETH) = _getReserves();
+            // selling tokens, calculate tax
+            (uint256 reserveToken, uint256 reserveWETH) = _getReserves();
 
-                uint256 taxableAmount = amount < fromBought ? amount : fromBought;
-                uint256 wethAmountSold = _getAmountOut(taxableAmount, reserveToken, reserveWETH);
+            uint256 taxableAmount = amount < fromBought ? amount : fromBought;
+            uint256 wethAmountSold = _getAmountOut(taxableAmount, reserveToken, reserveWETH);
 
-                uint256 wethAmountBought = taxableAmount * fromBought / fromPaid;
+            uint256 wethAmountBought = taxableAmount * fromBought / fromPaid;
 
-                if (wethAmountSold > wethAmountBought) {
-                    uint256 tax
-                }
+            if (wethAmountSold > wethAmountBought) {
+                uint256 tax;
             }
         } else if (from == UNI_V2_PAIR) {} else {}
     }
