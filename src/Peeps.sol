@@ -4,9 +4,10 @@ pragma solidity 0.8.19;
 import {IUniswapV2Router02} from "v2-periphery/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "v2-core/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "v2-core/interfaces/IUniswapV2Pair.sol";
-import {Ownable} from "solady/src/auth/Ownable.sol";
+import {Ownable} from "solady/auth/Ownable.sol";
 import {IWETH} from "v2-periphery/interfaces/IWETH.sol";
 import {IRevenueWallet} from "./interfaces/IRevenueWallet.sol";
+import {BlazeLibrary} from "./libraries/BlazeLibrary.sol";
 
 /// @notice Peep
 /// @author fico23
@@ -20,16 +21,6 @@ contract Peeps {
     event Transfer(address indexed from, address indexed to, uint256 amount);
 
     event Approval(address indexed owner, address indexed spender, uint256 amount);
-
-    /*//////////////////////////////////////////////////////////////
-                            METADATA STORAGE
-    //////////////////////////////////////////////////////////////*/
-
-    string public name;
-
-    string public symbol;
-
-    uint8 public immutable decimals;
 
     /*//////////////////////////////////////////////////////////////
                               ERC20 STORAGE
@@ -63,19 +54,23 @@ contract Peeps {
     bool internal immutable IS_TOKEN_FIRST;
     address internal immutable REVENUE_WALLET;
     IWETH internal immutable WETH;
-    uint256 internal immutable INITIAL_CHAIN_ID;
-    bytes32 internal immutable INITIAL_DOMAIN_SEPARATOR;
 
     uint256 internal constant BOUGHT_OFFSET = 160;
     uint256 internal constant PAID_OFFSET = 96;
     uint256 internal constant MASK_64 = 0xffffffffffffffff;
     uint256 internal constant MASK_96 = 0xffffffffffffffffffffffff;
 
+    // /*//////////////////////////////////////////////////////////////
+    //                         ERRORS
+    // //////////////////////////////////////////////////////////////*/
+    error InsufficientInputAmount();
+    error InsufficientLiquidity();
+
     /*//////////////////////////////////////////////////////////////
                                CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    constructor(address _revenueWallet, address _weth, IUniswapV2Factory _factory, uint256 _totalSupply) {
+    constructor(address _revenueWallet, address _weth, IUniswapV2Factory _factory, uint96 _totalSupply) {
         INITIAL_CHAIN_ID = block.chainid;
         INITIAL_DOMAIN_SEPARATOR = computeDomainSeparator();
 
@@ -89,7 +84,7 @@ contract Peeps {
         address pair = _factory.createPair(address(this), _weth);
         UNI_V2_PAIR = IUniswapV2Pair(pair);
 
-        balanceOf[msg.sender] = _totalSupply;
+        _balanceOf[msg.sender] = _totalSupply;
         emit Transfer(address(0), msg.sender, _totalSupply);
     }
 
@@ -186,7 +181,7 @@ contract Peeps {
         return keccak256(
             abi.encode(
                 keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-                keccak256(bytes(name)),
+                keccak256("PEEPS"),
                 keccak256("1"),
                 block.chainid,
                 address(this)
@@ -227,33 +222,33 @@ contract Peeps {
 
         fromAmount -= amount;
 
-        if (to == UNI_V2_PAIR) {
-            // selling tokens, calculate tax
+        if (to == address(UNI_V2_PAIR)) {
+            // selling tokens, calculate onus
             (uint256 reserveToken, uint256 reserveWETH) = _getReserves();
 
-            uint256 taxableAmount = amount < fromBought ? amount : fromBought;
-            uint256 wethAmountSold = _getAmountOut(taxableAmount, reserveToken, reserveWETH);
+            uint256 eligibleAmount = amount < fromBought ? amount : fromBought;
+            uint256 wethAmountSold = _getAmountOut(eligibleAmount, reserveToken, reserveWETH);
 
-            uint256 wethAmountBought = taxableAmount * fromBought / fromPaid;
+            uint256 wethAmountBought = eligibleAmount * fromBought / fromPaid;
 
             if (wethAmountSold > wethAmountBought) {
-                uint256 tax;
+                uint256 onus = BlazeLibrary.getOnus(totalOnus, onusableAmount);
             }
         } else if (from == UNI_V2_PAIR) {} else {}
     }
 
     function _executeSwap(uint256 amountIn) internal {
-        (uint256 reserveToken, uint256 reserveWETH) = _getReserves();
-        uint256 amountOut = _getAmountOut(amountIn, reserveToken, reserveWETH);
+        // (uint256 reserveToken, uint256 reserveWETH) = _getReserves();
+        // uint256 amountOut = _getAmountOut(amountIn, reserveToken, reserveWETH);
 
-        balanceOf[address(this)] = 0;
-        unchecked {
-            balanceOf[address(UNI_V2_PAIR)] += amountIn;
-        }
-        emit Transfer(address(this), address(UNI_V2_PAIR), amountIn);
+        // // balanceOf[address(this)] = 0;
+        // unchecked {
+        //     balanceOf[address(UNI_V2_PAIR)] += amountIn;
+        // }
+        // emit Transfer(address(this), address(UNI_V2_PAIR), amountIn);
 
-        (uint256 amount0Out, uint256 amount1Out) = IS_TOKEN_FIRST ? (uint256(0), amountOut) : (amountOut, uint256(0));
-        UNI_V2_PAIR.swap(amount0Out, amount1Out, REVENUE_WALLET, new bytes(0));
+        // (uint256 amount0Out, uint256 amount1Out) = IS_TOKEN_FIRST ? (uint256(0), amountOut) : (amountOut, uint256(0));
+        // UNI_V2_PAIR.swap(amount0Out, amount1Out, REVENUE_WALLET, new bytes(0));
     }
 
     function _getReserves() internal view returns (uint256 reserveA, uint256 reserveB) {
