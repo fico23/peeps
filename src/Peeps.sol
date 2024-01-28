@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-pragma solidity 0.8.19;
+pragma solidity 0.8.22;
 
 import {IUniswapV2Router02} from "v2-periphery/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "v2-core/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "v2-core/interfaces/IUniswapV2Pair.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
 import {IWETH} from "v2-periphery/interfaces/IWETH.sol";
-import {IRevenueWallet} from "./interfaces/IRevenueWallet.sol";
+import {ILock} from "./interfaces/ILock.sol";
 import {BlazeLibrary} from "./libraries/BlazeLibrary.sol";
 
 /// @notice Peep
@@ -54,6 +54,7 @@ contract Peeps {
     bool internal immutable IS_TOKEN_FIRST;
     address internal immutable REVENUE_WALLET;
     IWETH internal immutable WETH;
+    ILock internal immutable LOCK;
 
     uint256 internal constant BOUGHT_OFFSET = 160;
     uint256 internal constant PAID_OFFSET = 96;
@@ -70,7 +71,7 @@ contract Peeps {
                                CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    constructor(address _revenueWallet, address _weth, IUniswapV2Factory _factory, uint96 _totalSupply) {
+    constructor(address _revenueWallet, address _weth, IUniswapV2Factory _factory, address lock, uint96 _totalSupply) {
         INITIAL_CHAIN_ID = block.chainid;
         INITIAL_DOMAIN_SEPARATOR = computeDomainSeparator();
 
@@ -78,6 +79,8 @@ contract Peeps {
 
         WETH = IWETH(_weth);
         IS_TOKEN_FIRST = address(this) < _weth;
+
+        LOCK = ILock(lock);
 
         totalSupply = _totalSupply;
 
@@ -223,32 +226,33 @@ contract Peeps {
         fromAmount -= amount;
 
         if (to == address(UNI_V2_PAIR)) {
-            // selling tokens, calculate onus
+            // selling, calculate onus
             (uint256 reserveToken, uint256 reserveWETH) = _getReserves();
 
-            uint256 eligibleAmount = amount < fromBought ? amount : fromBought;
-            uint256 wethAmountSold = _getAmountOut(eligibleAmount, reserveToken, reserveWETH);
+            uint256 onusableAmount = amount < fromBought ? amount : fromBought;
 
-            uint256 wethAmountBought = eligibleAmount * fromBought / fromPaid;
+            uint256 sellingFor = _getAmountOut(onusableAmount, reserveToken, reserveWETH);
+            uint256 boughtWith = onusableAmount * fromBought / fromPaid;
 
-            if (wethAmountSold > wethAmountBought) {
-                uint256 onus = BlazeLibrary.getOnus(totalOnus, onusableAmount);
+            if (sellingFor > boughtWith) {
+                uint256 onus = BlazeLibrary.getOnus(LOCK.getTotalOnus(), sellingFor - boughtWith);
+                _executeSwap(from, onus, reserveToken, reserveWETH);
             }
-        } else if (from == UNI_V2_PAIR) {} else {}
+        } else if (from == address(UNI_V2_PAIR)) {} else {}
     }
 
-    function _executeSwap(uint256 amountIn) internal {
-        // (uint256 reserveToken, uint256 reserveWETH) = _getReserves();
-        // uint256 amountOut = _getAmountOut(amountIn, reserveToken, reserveWETH);
+    function _executeSwap(address from, uint256 amountIn, uint256 reserveToken, uint256 reserveWETH) internal {
+        uint256 amountOut = _getAmountOut(amountIn, reserveToken, reserveWETH);
 
-        // // balanceOf[address(this)] = 0;
-        // unchecked {
-        //     balanceOf[address(UNI_V2_PAIR)] += amountIn;
-        // }
-        // emit Transfer(address(this), address(UNI_V2_PAIR), amountIn);
+        emit Transfer(from, address(this), amountIn);
 
-        // (uint256 amount0Out, uint256 amount1Out) = IS_TOKEN_FIRST ? (uint256(0), amountOut) : (amountOut, uint256(0));
-        // UNI_V2_PAIR.swap(amount0Out, amount1Out, REVENUE_WALLET, new bytes(0));
+        unchecked {
+            _balanceOf[address(UNI_V2_PAIR)] += amountIn;
+        }
+        emit Transfer(address(this), address(UNI_V2_PAIR), amountIn);
+
+        (uint256 amount0Out, uint256 amount1Out) = IS_TOKEN_FIRST ? (uint256(0), amountOut) : (amountOut, uint256(0));
+        UNI_V2_PAIR.swap(amount0Out, amount1Out, address(LOCK), new bytes(0));
     }
 
     function _getReserves() internal view returns (uint256 reserveA, uint256 reserveB) {
