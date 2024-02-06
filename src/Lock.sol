@@ -16,9 +16,9 @@ contract Lock is IUniswapV2Callee {
     uint256 internal constant ENDS_OFFSET = 224;
     uint256 internal constant AMOUNT_OFFSET = 128;
 
-    uint256 internal constant MASK_69 = 2 ^ 69 - 1;
-    uint256 internal constant MASK_86 = 2 ^ 86 - 1;
-    uint256 internal constant MASK_101 = 2 ^ 101 - 1;
+    uint256 internal constant MASK_69 = 2**69 - 1;
+    uint256 internal constant MASK_86 = 2**86 - 1;
+    uint256 internal constant MASK_101 = 2**101 - 1;
     uint256 internal constant MASK_96 = 0xffffffffffffffffffffffff;
     uint256 internal constant MASK_128 = 0xffffffffffffffffffffffffffffffff;
 
