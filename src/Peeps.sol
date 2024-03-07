@@ -26,12 +26,12 @@ contract Peeps {
                               ERC20 STORAGE
     //////////////////////////////////////////////////////////////*/
 
-    uint256 public totalSupply;
+    uint256 public immutable totalSupply;
 
     // Bits Layout:
-    // - [0..95]    `bought`
-    // - [96..159]  `paid`
-    // - [160..255] `amount`
+    // - [0..87]    `bought`
+    // - [88..167]  `paid`
+    // - [168..255] `amount`
     mapping(address => uint256) internal _balanceOf;
 
     mapping(address => mapping(address => uint256)) public allowance;
@@ -56,10 +56,10 @@ contract Peeps {
     IWETH internal immutable WETH;
     ILock internal immutable LOCK;
 
-    uint256 internal constant BOUGHT_OFFSET = 160;
-    uint256 internal constant PAID_OFFSET = 96;
-    uint256 internal constant MASK_64 = 0xffffffffffffffff;
-    uint256 internal constant MASK_96 = 0xffffffffffffffffffffffff;
+    uint256 internal constant BOUGHT_OFFSET = 168;
+    uint256 internal constant PAID_OFFSET = 88;
+    uint256 internal constant MASK_80 = type(uint80).max;
+    uint256 internal constant MASK_88 = type(uint88).max;
 
     // /*//////////////////////////////////////////////////////////////
     //                         ERRORS
@@ -181,27 +181,27 @@ contract Peeps {
                         INTERNAL MINT/BURN LOGIC
     //////////////////////////////////////////////////////////////*/
 
-    function _parseBalanceInfo(address addr) internal view returns (uint256 bought, uint256 paid, uint256 amount) {
+    function _readBalanceInfo(address addr) internal view returns (uint256 bought, uint256 paid, uint256 amount) {
         uint256 balanceInfo = _balanceOf[addr];
 
         bought = balanceInfo >> BOUGHT_OFFSET;
-        paid = balanceInfo >> PAID_OFFSET & MASK_64;
-        amount = balanceInfo & MASK_96;
+        paid = balanceInfo >> PAID_OFFSET & MASK_80;
+        amount = balanceInfo & MASK_88;
     }
 
     function _updateBalanceInfoEnded(address addr, uint256 amount) internal {
         // cleanup ends, paid, bought
-        _balanceOf[addr] = amount & MASK_96;
+        _balanceOf[addr] = amount & MASK_88;
     }
 
     function _updateBalanceInfo(address addr, uint256 bought, uint256 paid, uint256 amount) internal {
         // cleanup ends, paid, bought
-        _balanceOf[addr] = amount | paid >> PAID_OFFSET | bought >> BOUGHT_OFFSET;
+        _balanceOf[addr] = amount | paid << PAID_OFFSET | bought << BOUGHT_OFFSET;
     }
 
     function _transfer(address from, address to, uint256 amount) internal {
-        (uint256 fromBought, uint256 fromPaid, uint256 fromAmount) = _parseBalanceInfo(from);
-        (uint256 toBought, uint256 toPaid, uint256 toAmount) = _parseBalanceInfo(to);
+        (uint256 fromBought, uint256 fromPaid, uint256 fromAmount) = _readBalanceInfo(from);
+        (uint256 toBought, uint256 toPaid, uint256 toAmount) = _readBalanceInfo(to);
 
         fromAmount -= amount;
         unchecked {
