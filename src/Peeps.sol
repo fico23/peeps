@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity 0.8.22;
 
-import {IUniswapV2Router02} from "v2-periphery/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "v2-core/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "v2-core/interfaces/IUniswapV2Pair.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
 import {IWETH} from "v2-periphery/interfaces/IWETH.sol";
 import {ILock} from "./interfaces/ILock.sol";
 import {BlazeLibrary} from "./libraries/BlazeLibrary.sol";
+import {IUniswapV2Router02} from "v2-periphery/interfaces/IUniswapV2Router02.sol";
+import {IUniswapV2Factory} from "v2-core/interfaces/IUniswapV2Factory.sol";
 
 /// @notice Peep
 /// @author fico23
-/// @author Solmate (https://github.com/transmissions11/solmate/blob/main/src/tokens/ERC20.sol)
-/// @author Modified from Uniswap (https://github.com/Uniswap/uniswap-v2-core/blob/master/contracts/UniswapV2ERC20.sol)
+/// @author Modified from Solmate (https://github.com/transmissions11/solmate/blob/main/src/tokens/ERC20.sol)
 contract Peeps {
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
@@ -65,6 +65,7 @@ contract Peeps {
     //                         ERRORS
     // //////////////////////////////////////////////////////////////*/
     error InsufficientInputAmount();
+    error InsufficientOutputAmount();
     error InsufficientLiquidity();
 
     /*//////////////////////////////////////////////////////////////
@@ -104,15 +105,7 @@ contract Peeps {
     }
 
     function transfer(address to, uint256 amount) public virtual returns (bool) {
-        _balanceOf[msg.sender] -= amount;
-
-        // Cannot overflow because the sum of all user
-        // balances can't exceed the max uint256 value.
-        unchecked {
-            _balanceOf[to] += amount;
-        }
-
-        emit Transfer(msg.sender, to, amount);
+        _transfer(msg.sender, to, amount);
 
         return true;
     }
@@ -122,15 +115,7 @@ contract Peeps {
 
         if (allowed != type(uint256).max) allowance[from][msg.sender] = allowed - amount;
 
-        _balanceOf[from] -= amount;
-
-        // Cannot overflow because the sum of all user
-        // balances can't exceed the max uint256 value.
-        unchecked {
-            _balanceOf[to] += amount;
-        }
-
-        emit Transfer(from, to, amount);
+        _transfer(from, to, amount);
 
         return true;
     }
@@ -204,19 +189,14 @@ contract Peeps {
         amount = balanceInfo & MASK_96;
     }
 
-    function _updateBalanceInfoEnded(address addr, uint256 newAmount) internal {
+    function _updateBalanceInfoEnded(address addr, uint256 amount) internal {
         // cleanup ends, paid, bought
-        _balanceOf[addr] = newAmount & MASK_96;
+        _balanceOf[addr] = amount & MASK_96;
     }
 
-    function _calculateProfit(uint256 paid, uint256 bought, uint256 sellingAmount) internal returns (uint256) {
-        unchecked {
-            uint256 wouldSellFor = bought * sellingAmount / paid;
-            (uint256 reserveToken, uint256 reserveWETH) = _getReserves();
-            uint256 amountOut = _getAmountOut(sellingAmount, reserveToken, reserveWETH);
-
-            return wouldSellFor > amountOut ? 0 : amountOut - wouldSellFor;
-        }
+    function _updateBalanceInfo(address addr, uint256 bought, uint256 paid, uint256 amount) internal {
+        // cleanup ends, paid, bought
+        _balanceOf[addr] = amount | paid >> PAID_OFFSET | bought >> BOUGHT_OFFSET;
     }
 
     function _transfer(address from, address to, uint256 amount) internal {
@@ -224,21 +204,47 @@ contract Peeps {
         (uint256 toBought, uint256 toPaid, uint256 toAmount) = _parseBalanceInfo(to);
 
         fromAmount -= amount;
+        unchecked {
+            if (to == address(UNI_V2_PAIR)) {
+                // selling -> calculate potential sellers onus
+                (uint256 reserveToken, uint256 reserveWETH) = _getReserves();
 
-        if (to == address(UNI_V2_PAIR)) {
-            // selling, calculate onus
-            (uint256 reserveToken, uint256 reserveWETH) = _getReserves();
+                uint256 onusableAmount = amount < fromBought ? amount : fromBought;
 
-            uint256 onusableAmount = amount < fromBought ? amount : fromBought;
+                uint256 sellingFor = _getAmountOut(onusableAmount, reserveToken, reserveWETH);
+                uint256 boughtWith = onusableAmount * fromBought / fromPaid;
 
-            uint256 sellingFor = _getAmountOut(onusableAmount, reserveToken, reserveWETH);
-            uint256 boughtWith = onusableAmount * fromBought / fromPaid;
+                if (sellingFor > boughtWith) {
+                    uint256 onus = BlazeLibrary.getOnus(LOCK.getTotalOnus(), sellingFor - boughtWith);
+                    _executeSwap(from, onus, reserveToken, reserveWETH);
 
-            if (sellingFor > boughtWith) {
-                uint256 onus = BlazeLibrary.getOnus(LOCK.getTotalOnus(), sellingFor - boughtWith);
-                _executeSwap(from, onus, reserveToken, reserveWETH);
+                    fromBought -= amount;
+                    fromPaid -= sellingFor;
+
+                    amount -= onus;
+                }
+            } else if (from == address(UNI_V2_PAIR)) {
+                // buying -> update buyers onus details
+                (uint256 reserveToken, uint256 reserveWETH) = _getReserves();
+
+                toBought += amount;
+                toPaid += _getAmountIn(amount, reserveWETH, reserveToken);
+            } else {
+                // pleb transfer -> transfer their onus details
+                fromBought -= amount;
+                uint256 wouldPay = amount * fromPaid / fromBought;
+                fromPaid -= wouldPay;
+
+                toBought += amount;
+                toPaid += wouldPay;
             }
-        } else if (from == address(UNI_V2_PAIR)) {} else {}
+
+            toAmount += amount;
+        }
+
+        _updateBalanceInfo(from, fromBought, fromPaid, fromAmount);
+        _updateBalanceInfo(to, toBought, toPaid, toAmount);
+        emit Transfer(from, to, amount);
     }
 
     function _executeSwap(address from, uint256 amountIn, uint256 reserveToken, uint256 reserveWETH) internal {
@@ -273,6 +279,21 @@ contract Peeps {
             uint256 numerator = amountInWithFee * reserveOut;
             uint256 denominator = reserveIn * 1000 + amountInWithFee;
             amountOut = numerator / denominator;
+        }
+    }
+
+    function _getAmountIn(uint256 amountOut, uint256 reserveIn, uint256 reserveOut)
+        internal
+        pure
+        returns (uint256 amountIn)
+    {
+        if (amountOut == 0) revert InsufficientOutputAmount();
+        if (reserveIn == 0) revert InsufficientLiquidity();
+        if (reserveOut == 0) revert InsufficientLiquidity();
+        unchecked {
+            uint256 numerator = reserveIn * amountOut * 1000;
+            uint256 denominator = (reserveOut - amountOut) * 997;
+            amountIn = numerator / denominator + 1;
         }
     }
 
