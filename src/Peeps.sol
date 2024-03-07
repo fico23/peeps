@@ -85,8 +85,7 @@ contract Peeps {
 
         totalSupply = _totalSupply;
 
-        address pair = _factory.createPair(address(this), _weth);
-        UNI_V2_PAIR = IUniswapV2Pair(pair);
+        UNI_V2_PAIR = IUniswapV2Pair(_factory.createPair(address(this), _weth));
 
         _balanceOf[msg.sender] = _totalSupply;
         emit Transfer(address(0), msg.sender, _totalSupply);
