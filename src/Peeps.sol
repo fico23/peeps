@@ -1,27 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity 0.8.22;
 
-import {IUniswapV2Factory} from "v2-core/interfaces/IUniswapV2Factory.sol";
-import {IUniswapV2Pair} from "v2-core/interfaces/IUniswapV2Pair.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
 import {IWETH} from "v2-periphery/interfaces/IWETH.sol";
 import {ILock} from "./interfaces/ILock.sol";
 import {BlazeLibrary} from "./libraries/BlazeLibrary.sol";
 import {IUniswapV2Router02} from "v2-periphery/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "v2-core/interfaces/IUniswapV2Factory.sol";
+import {IUniswapV2Pair} from "v2-core/interfaces/IUniswapV2Pair.sol";
 
 /// @notice Peep
 /// @author fico23
 /// @author Modified from Solmate (https://github.com/transmissions11/solmate/blob/main/src/tokens/ERC20.sol)
 contract Peeps {
-    /*//////////////////////////////////////////////////////////////
-                                 EVENTS
-    //////////////////////////////////////////////////////////////*/
-
-    event Transfer(address indexed from, address indexed to, uint256 amount);
-
-    event Approval(address indexed owner, address indexed spender, uint256 amount);
-
     /*//////////////////////////////////////////////////////////////
                               ERC20 STORAGE
     //////////////////////////////////////////////////////////////*/
@@ -55,11 +46,20 @@ contract Peeps {
     address internal immutable REVENUE_WALLET;
     IWETH internal immutable WETH;
     ILock internal immutable LOCK;
+    address internal immutable DEPLOYER;
 
     uint256 internal constant BOUGHT_OFFSET = 168;
     uint256 internal constant PAID_OFFSET = 88;
     uint256 internal constant MASK_80 = type(uint80).max;
     uint256 internal constant MASK_88 = type(uint88).max;
+
+    /*//////////////////////////////////////////////////////////////
+                                 EVENTS
+    //////////////////////////////////////////////////////////////*/
+
+    event Transfer(address indexed from, address indexed to, uint256 amount);
+
+    event Approval(address indexed owner, address indexed spender, uint256 amount);
 
     // /*//////////////////////////////////////////////////////////////
     //                         ERRORS
@@ -67,6 +67,8 @@ contract Peeps {
     error InsufficientInputAmount();
     error InsufficientOutputAmount();
     error InsufficientLiquidity();
+    error Unauthorized();
+    error LiquidityAlreadyAdded();
 
     /*//////////////////////////////////////////////////////////////
                                CONSTRUCTOR
@@ -87,8 +89,20 @@ contract Peeps {
 
         UNI_V2_PAIR = IUniswapV2Pair(_factory.createPair(address(this), _weth));
 
-        _balanceOf[msg.sender] = _totalSupply;
-        emit Transfer(address(0), msg.sender, _totalSupply);
+        DEPLOYER = msg.sender;
+    }
+
+    function addLiquidity() external payable {
+        if (msg.sender != DEPLOYER) revert Unauthorized();
+        if (_balanceOf[address(UNI_V2_PAIR)] != 0) revert LiquidityAlreadyAdded();
+
+        _balanceOf[address(UNI_V2_PAIR)] = totalSupply;
+        emit Transfer(address(0), address(UNI_V2_PAIR), totalSupply);
+
+        WETH.deposit{value: msg.value}();
+        assert(IWETH(WETH).transfer(address(UNI_V2_PAIR), msg.value));
+
+        UNI_V2_PAIR.mint(DEPLOYER);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -211,17 +225,17 @@ contract Peeps {
                 uint256 onusableAmount = amount < fromBought ? amount : fromBought;
 
                 uint256 sellingFor = _getAmountOut(onusableAmount, reserveToken, reserveWETH);
-                uint256 boughtWith = onusableAmount * fromBought / fromPaid;
+                uint256 paidFor = onusableAmount * fromBought / fromPaid;
 
-                if (sellingFor > boughtWith) {
-                    uint256 onus = BlazeLibrary.getOnus(LOCK.getTotalOnus(), sellingFor - boughtWith);
+                if (sellingFor > paidFor) {
+                    uint256 onus = BlazeLibrary.getOnus(LOCK.getTotalOnus(), sellingFor - paidFor);
                     _executeSwap(from, onus, reserveToken, reserveWETH);
-
-                    fromBought -= amount;
-                    fromPaid -= sellingFor;
 
                     amount -= onus;
                 }
+
+                fromBought -= amount;
+                fromPaid -= sellingFor;
             } else if (from == address(UNI_V2_PAIR)) {
                 // buying -> update buyers onus details
                 (uint256 reserveToken, uint256 reserveWETH) = _getReserves();

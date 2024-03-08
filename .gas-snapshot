@@ -1,1 +1,3 @@
-PeepsTest:testBalancePacking(address,uint88,uint80,uint88) (runs: 1024, μ: 3446410, ~: 3446410)
+PeepsTest:testAddLiqudity() (gas: 243747)
+PeepsTest:testBalancePacking(address,uint88,uint80,uint88) (runs: 1024, μ: 3620596, ~: 3620596)
+PeepsTest:testDeploy() (gas: 16865)
