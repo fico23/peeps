@@ -34,6 +34,12 @@ contract PeepsTest is Test {
     uint256 private constant ETH_LIQUIDITY = 1 ether;
     address private constant REVENUE_WALLET = address(0xbabe);
     uint96 private constant TOTAL_SUPPLY = type(uint96).max;
+    uint256 public constant UNI_MINIMUM_LIQUIDITY = 10 ** 3;
+    address private constant ALICE = address(0x1234);
+    address private constant BOB = address(0x1233);
+    address private constant EVE = address(0x1232);
+    address private constant MALLORY = address(0x1231);
+
 
     event Transfer(address indexed from, address indexed to, uint256 amount);
     event Approval(address indexed owner, address indexed spender, uint256 amount);
@@ -49,9 +55,24 @@ contract PeepsTest is Test {
 
         peeps.approve(address(v2Router), TOTAL_SUPPLY);
 
-        vm.deal(address(this), ETH_LIQUIDITY);
-
         v2Pair = IUniswapV2Pair(v2Factory.getPair(address(peeps), address(weth)));
+
+        vm.label(address(lockMock), "LOCK");
+        vm.label(address(weth), "WETH");
+        vm.label(address(v2Factory), "UNI_FACTORY");
+        vm.label(address(v2Router), "UNI_ROUTER");
+        vm.label(address(v2Pair), "UNI_PAIR");
+        vm.label(address(peeps), "PEEPS");
+        vm.label(ALICE, "ALICE");
+        vm.label(BOB, "BOB");
+        vm.label(EVE, "EVE");
+        vm.label(MALLORY, "MALLORY");
+
+        deal(ALICE, 100 ether);
+        deal(BOB, 100 ether);
+        deal(EVE, 100 ether);
+        deal(MALLORY, 100 ether);
+        vm.deal(address(this), 100 ether);
     }
 
     function testBalancePacking(address addr, uint88 bought, uint80 paid, uint88 amount) public {
@@ -74,15 +95,22 @@ contract PeepsTest is Test {
         assertEq(peeps.balanceOf(address(v2Pair)), 0);
     }
 
-    function testAddLiqudity() public {
+    function testAddLiqudity(uint112 ethLiquidity) public {
+        if (_uniSqrt(uint256(TOTAL_SUPPLY) * ethLiquidity) < UNI_MINIMUM_LIQUIDITY) {
+            vm.expectRevert();
+            peeps.addLiquidity{value: ethLiquidity}();
+            return;
+        }
+
         vm.expectEmit(true, true, false, true, address(peeps));
         emit Transfer(address(0), address(v2Pair), TOTAL_SUPPLY);
         vm.expectEmit(true, true, false, true, address(weth));
-        emit Transfer(address(0), address(peeps), ETH_LIQUIDITY);
+        emit Transfer(address(0), address(peeps), ethLiquidity);
         vm.expectEmit(true, true, false, true, address(weth));
-        emit Transfer(address(peeps), address(v2Pair), ETH_LIQUIDITY);
+        emit Transfer(address(peeps), address(v2Pair), ethLiquidity);
 
-        peeps.addLiquidity{value: 1 ether}();
+        vm.deal(address(this), ethLiquidity);
+        peeps.addLiquidity{value: ethLiquidity}();
 
         assertEq(peeps.balanceOf(address(v2Pair)), TOTAL_SUPPLY);
 
@@ -91,7 +119,20 @@ contract PeepsTest is Test {
             address(peeps) < address(weth) ? (reserve0, reserve1) : (reserve1, reserve0);
 
         assertEq(reserveToken, TOTAL_SUPPLY);
-        assertEq(reserveWETH, ETH_LIQUIDITY);
+        assertEq(reserveWETH, ethLiquidity);
+    }
+
+    function testAddLiquidityUnauthorized() public {
+        vm.prank(ALICE);
+
+        vm.expectRevert(Peeps.Unauthorized.selector);
+        peeps.addLiquidity{value: ETH_LIQUIDITY}();
+    }
+
+    function testAddLiquidityAlreadyAdded() public {
+        peeps.addLiquidity{value: ETH_LIQUIDITY}();
+        vm.expectRevert(Peeps.LiquidityAlreadyAdded.selector);
+        peeps.addLiquidity{value: ETH_LIQUIDITY}();
     }
 
     function _deployUniswap(address weth_)
@@ -114,5 +155,18 @@ contract PeepsTest is Test {
             routerAddress := create(0, add(bytecode2, 0x20), mload(bytecode2))
         }
         v2Router_ = IUniswapV2Router02(routerAddress);
+    }
+
+    function _uniSqrt(uint y) internal pure returns (uint z) {
+        if (y > 3) {
+            z = y;
+            uint x = y / 2 + 1;
+            while (x < z) {
+                z = x;
+                x = (y / x + x) / 2;
+            }
+        } else if (y != 0) {
+            z = 1;
+        }
     }
 }
