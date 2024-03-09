@@ -10,16 +10,12 @@ import {LockMock} from "./mocks/LockMock.sol";
 import {IUniswapV2Pair} from "v2-core/interfaces/IUniswapV2Pair.sol";
 
 contract PeepsInternal is Peeps {
-    constructor(address _revenueWallet, address _weth, IUniswapV2Factory _factory, address lock, uint96 _totalSupply)
+    constructor(address _revenueWallet, address _weth, IUniswapV2Factory _factory, address lock, uint88 _totalSupply)
         Peeps(_revenueWallet, _weth, _factory, lock, _totalSupply)
     {}
 
     function updateBalanceInfo(address addr, uint256 bought, uint256 paid, uint256 amount) external {
         return _updateBalanceInfo(addr, bought, paid, amount);
-    }
-
-    function readBalanceInfo(address addr) external view returns (uint256, uint256, uint256) {
-        return _readBalanceInfo(addr);
     }
 }
 
@@ -31,15 +27,17 @@ contract PeepsTest is Test {
     IUniswapV2Pair v2Pair;
     LockMock lockMock;
 
+    address[] internal pathBuy;
+    address[] internal pathSell;
+
     uint256 private constant ETH_LIQUIDITY = 1 ether;
     address private constant REVENUE_WALLET = address(0xbabe);
-    uint96 private constant TOTAL_SUPPLY = type(uint96).max;
+    uint88 private constant TOTAL_SUPPLY = type(uint88).max;
     uint256 public constant UNI_MINIMUM_LIQUIDITY = 10 ** 3;
     address private constant ALICE = address(0x1234);
     address private constant BOB = address(0x1233);
     address private constant EVE = address(0x1232);
     address private constant MALLORY = address(0x1231);
-
 
     event Transfer(address indexed from, address indexed to, uint256 amount);
     event Approval(address indexed owner, address indexed spender, uint256 amount);
@@ -57,6 +55,12 @@ contract PeepsTest is Test {
 
         v2Pair = IUniswapV2Pair(v2Factory.getPair(address(peeps), address(weth)));
 
+        pathBuy.push(address(weth));
+        pathBuy.push(address(peeps));
+
+        pathSell.push(address(peeps));
+        pathSell.push(address(weth));
+
         vm.label(address(lockMock), "LOCK");
         vm.label(address(weth), "WETH");
         vm.label(address(v2Factory), "UNI_FACTORY");
@@ -72,7 +76,7 @@ contract PeepsTest is Test {
         deal(BOB, 100 ether);
         deal(EVE, 100 ether);
         deal(MALLORY, 100 ether);
-        vm.deal(address(this), 100 ether);
+        deal(address(this), 100 ether);
     }
 
     function testBalancePacking(address addr, uint88 bought, uint80 paid, uint88 amount) public {
@@ -135,6 +139,57 @@ contract PeepsTest is Test {
         peeps.addLiquidity{value: ETH_LIQUIDITY}();
     }
 
+    function testBuy(uint256 amountEth) public {
+        amountEth = bound(amountEth, 1, ETH_LIQUIDITY);
+
+        peeps.addLiquidity{value: ETH_LIQUIDITY}();
+
+        uint256 expectedAmountOut = _getAmountOutPeeps(amountEth);
+        _buy(ALICE, amountEth);
+
+        assertEq(peeps.balanceOf(ALICE), expectedAmountOut);
+
+        (uint256 bought, uint256 paid, uint256 amount) = peeps.readBalanceInfo(ALICE);
+        assertEq(bought, expectedAmountOut);
+        assertEq(paid, amountEth);
+        assertEq(amount, expectedAmountOut);
+    }
+
+    function testBuyAndTransfer(uint256 amountEth, uint8 percentageTransfer) public {
+        amountEth = bound(amountEth, 1, ETH_LIQUIDITY);
+        percentageTransfer = uint8(bound(percentageTransfer, 1, type(uint8).max));
+
+        peeps.addLiquidity{value: ETH_LIQUIDITY}();
+
+        uint256 expectedAmountOut = _getAmountOutPeeps(amountEth);
+        _buy(ALICE, amountEth);
+        assertEq(peeps.balanceOf(ALICE), expectedAmountOut);
+
+        uint256 transferAmount = expectedAmountOut * percentageTransfer / type(uint8).max;
+
+        vm.prank(ALICE);
+        vm.expectEmit(true, true, false, true, address(peeps));
+        emit Transfer(ALICE, BOB, transferAmount);
+        peeps.transfer(BOB, transferAmount);
+
+        assertEq(peeps.balanceOf(ALICE), expectedAmountOut - transferAmount);
+        assertEq(peeps.balanceOf(BOB), transferAmount);
+
+        (uint256 aliceBought, uint256 alicePaid, uint256 aliceAmount) = peeps.readBalanceInfo(ALICE);
+        assertEq(aliceBought, expectedAmountOut - transferAmount);
+
+        assertEq(alicePaid, amountEth - amountEth * transferAmount / expectedAmountOut);
+        assertEq(aliceAmount, expectedAmountOut - transferAmount);
+
+        (uint256 bobBought, uint256 bobPaid, uint256 bobAmount) = peeps.readBalanceInfo(BOB);
+                
+        assertEq(bobBought, transferAmount);
+        assertEq(bobPaid, amountEth * transferAmount / expectedAmountOut);
+        assertEq(bobAmount, transferAmount);
+
+        assertEq(alicePaid + bobPaid, amountEth);
+    }
+
     function _deployUniswap(address weth_)
         internal
         returns (IUniswapV2Factory v2Factory_, IUniswapV2Router02 v2Router_)
@@ -157,10 +212,10 @@ contract PeepsTest is Test {
         v2Router_ = IUniswapV2Router02(routerAddress);
     }
 
-    function _uniSqrt(uint y) internal pure returns (uint z) {
+    function _uniSqrt(uint256 y) internal pure returns (uint256 z) {
         if (y > 3) {
             z = y;
-            uint x = y / 2 + 1;
+            uint256 x = y / 2 + 1;
             while (x < z) {
                 z = x;
                 x = (y / x + x) / 2;
@@ -168,5 +223,50 @@ contract PeepsTest is Test {
         } else if (y != 0) {
             z = 1;
         }
+    }
+
+    function _buy(address from, uint256 amountEth) internal {
+        deal(from, amountEth);
+
+        vm.prank(from);
+        v2Router.swapExactETHForTokensSupportingFeeOnTransferTokens{value: amountEth}(1, pathBuy, from, block.timestamp);
+    }
+
+    function _sell(address from, uint256 amountPeeps) internal {
+        vm.prank(from);
+        peeps.approve(address(v2Router), amountPeeps);
+
+        vm.prank(from);
+        v2Router.swapExactTokensForETHSupportingFeeOnTransferTokens(amountPeeps, 1, pathSell, from, block.timestamp);
+    }
+
+    function _getAmountOutEth(uint256 amountIn) internal view returns (uint256 amountOut) {
+        (uint256 reserve0, uint256 reserve1,) = v2Pair.getReserves();
+        (uint256 reservePeeps, uint256 reserveWeth) =
+            address(peeps) < address(weth) ? (reserve0, reserve1) : (reserve1, reserve0);
+
+        return _getAmountOut(amountIn, reservePeeps, reserveWeth);
+    }
+
+    function _getAmountOutPeeps(uint256 amountIn) internal view returns (uint256 amountOut) {
+        (uint256 reserve0, uint256 reserve1,) = v2Pair.getReserves();
+        (uint256 reservePeeps, uint256 reserveWeth) =
+            address(peeps) < address(weth) ? (reserve0, reserve1) : (reserve1, reserve0);
+
+        return _getAmountOut(amountIn, reserveWeth, reservePeeps);
+    }
+
+    // given an input amount of an asset and pair reserves, returns the maximum output amount of the other asset
+    function _getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut)
+        internal
+        pure
+        returns (uint256 amountOut)
+    {
+        require(amountIn > 0, "UniswapV2Library: INSUFFICIENT_INPUT_AMOUNT");
+        require(reserveIn > 0 && reserveOut > 0, "UniswapV2Library: INSUFFICIENT_LIQUIDITY");
+        uint256 amountInWithFee = amountIn * 997;
+        uint256 numerator = amountInWithFee * reserveOut;
+        uint256 denominator = reserveIn * 1000 + amountInWithFee;
+        amountOut = numerator / denominator;
     }
 }

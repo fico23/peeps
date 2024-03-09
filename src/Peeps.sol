@@ -8,6 +8,7 @@ import {BlazeLibrary} from "./libraries/BlazeLibrary.sol";
 import {IUniswapV2Router02} from "v2-periphery/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "v2-core/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "v2-core/interfaces/IUniswapV2Pair.sol";
+import {console2} from "forge-std/Test.sol";
 
 /// @notice Peep
 /// @author fico23
@@ -74,7 +75,7 @@ contract Peeps {
                                CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    constructor(address _revenueWallet, address _weth, IUniswapV2Factory _factory, address lock, uint96 _totalSupply) {
+    constructor(address _revenueWallet, address _weth, IUniswapV2Factory _factory, address lock, uint88 _totalSupply) {
         INITIAL_CHAIN_ID = block.chainid;
         INITIAL_DOMAIN_SEPARATOR = computeDomainSeparator();
 
@@ -190,6 +191,10 @@ contract Peeps {
         );
     }
 
+    function readBalanceInfo(address addr) external view returns (uint256, uint256, uint256) {
+        return _readBalanceInfo(addr);
+    }
+
     /*//////////////////////////////////////////////////////////////
                         INTERNAL MINT/BURN LOGIC
     //////////////////////////////////////////////////////////////*/
@@ -215,10 +220,14 @@ contract Peeps {
     function _transfer(address from, address to, uint256 amount) internal {
         (uint256 fromBought, uint256 fromPaid, uint256 fromAmount) = _readBalanceInfo(from);
         (uint256 toBought, uint256 toPaid, uint256 toAmount) = _readBalanceInfo(to);
+        console2.log("transfer from:%s to:%s amount:%s", from, to, amount);
+        console2.log("fromBought:%s fromPaid:%s fromAmount:%s", fromBought, fromPaid, fromAmount);
+        console2.log("toBought:%s toPaid:%s toAmount:%s", toBought, toPaid, toAmount);
 
         fromAmount -= amount;
         unchecked {
             if (to == address(UNI_V2_PAIR)) {
+                console2.log("sell");
                 // selling -> calculate potential sellers onus
                 (uint256 reserveToken, uint256 reserveWETH) = _getReserves();
 
@@ -237,15 +246,17 @@ contract Peeps {
                 fromBought -= amount;
                 fromPaid -= sellingFor;
             } else if (from == address(UNI_V2_PAIR)) {
+                console2.log("buy");
                 // buying -> update buyers onus details
                 (uint256 reserveToken, uint256 reserveWETH) = _getReserves();
+                console2.log(reserveToken, reserveWETH);
 
                 toBought += amount;
                 toPaid += _getAmountIn(amount, reserveWETH, reserveToken);
             } else {
                 // pleb transfer -> transfer their onus details
-                fromBought -= amount;
                 uint256 wouldPay = amount * fromPaid / fromBought;
+                fromBought -= amount;
                 fromPaid -= wouldPay;
 
                 toBought += amount;
@@ -254,6 +265,10 @@ contract Peeps {
 
             toAmount += amount;
         }
+
+                
+        console2.log("fromBought:%s fromPaid:%s fromAmount:%s", fromBought, fromPaid, fromAmount);
+        console2.log("toBought:%s toPaid:%s toAmount:%s", toBought, toPaid, toAmount);
 
         _updateBalanceInfo(from, fromBought, fromPaid, fromAmount);
         _updateBalanceInfo(to, toBought, toPaid, toAmount);
@@ -330,6 +345,6 @@ contract Peeps {
     }
 
     function balanceOf(address addr) public view returns (uint256) {
-        return uint256(uint96(_balanceOf[addr]));
+        return uint256(uint88(_balanceOf[addr]));
     }
 }
