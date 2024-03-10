@@ -38,6 +38,7 @@ contract PeepsTest is Test {
     address private constant BOB = address(0x1233);
     address private constant EVE = address(0x1232);
     address private constant MALLORY = address(0x1231);
+    uint256 internal constant WAD = 1e18;
 
     event Transfer(address indexed from, address indexed to, uint256 amount);
     event Approval(address indexed owner, address indexed spender, uint256 amount);
@@ -150,7 +151,7 @@ contract PeepsTest is Test {
         assertEq(peeps.balanceOf(ALICE), expectedAmountOut);
 
         (uint256 paid, uint256 amount) = peeps.readBalanceInfo(ALICE);
-        assertEq(paid, amountEth);
+        assertEq(paid, amountEth * WAD);
         assertEq(amount, expectedAmountOut);
     }
 
@@ -160,29 +161,32 @@ contract PeepsTest is Test {
 
         peeps.addLiquidity{value: ETH_LIQUIDITY}();
 
-        uint256 expectedAmountOut = _getAmountOutPeeps(amountEth);
+        uint256 boughtAmount = _getAmountOutPeeps(amountEth);
         _buy(ALICE, amountEth);
-        assertEq(peeps.balanceOf(ALICE), expectedAmountOut);
+        assertEq(peeps.balanceOf(ALICE), boughtAmount);
 
-        uint256 transferAmount = expectedAmountOut * percentageTransfer / type(uint8).max;
+        uint256 transferAmount = boughtAmount * percentageTransfer / type(uint8).max;
+        uint256 initialPaidAmount = amountEth * WAD;
 
         vm.prank(ALICE);
         vm.expectEmit(true, true, false, true, address(peeps));
         emit Transfer(ALICE, BOB, transferAmount);
         peeps.transfer(BOB, transferAmount);
 
-        assertEq(peeps.balanceOf(ALICE), expectedAmountOut - transferAmount);
+        uint256 transferedPaidAmount = initialPaidAmount * transferAmount / boughtAmount;
+
+        assertEq(peeps.balanceOf(ALICE), boughtAmount - transferAmount);
         assertEq(peeps.balanceOf(BOB), transferAmount);
 
         (uint256 alicePaid, uint256 aliceAmount) = peeps.readBalanceInfo(ALICE);
-        assertEq(alicePaid, amountEth - amountEth * transferAmount / expectedAmountOut);
-        assertEq(aliceAmount, expectedAmountOut - transferAmount);
+        assertEq(alicePaid, initialPaidAmount - transferedPaidAmount);
+        assertEq(aliceAmount, boughtAmount - transferAmount);
 
         (uint256 bobPaid, uint256 bobAmount) = peeps.readBalanceInfo(BOB);
-        assertEq(bobPaid, amountEth * transferAmount / expectedAmountOut);
+        assertEq(bobPaid, transferedPaidAmount);
         assertEq(bobAmount, transferAmount);
 
-        assertEq(alicePaid + bobPaid, amountEth);
+        assertEq(alicePaid + bobPaid, amountEth * WAD);
     }
 
     function _deployUniswap(address weth_)

@@ -43,7 +43,6 @@ contract Peeps {
     // /*//////////////////////////////////////////////////////////////
     //                         CONSTANTS & IMMUTABLES
     // //////////////////////////////////////////////////////////////*/
-    uint256 internal constant HUNDRED_PERCENT = 100;
     IUniswapV2Pair internal immutable UNI_V2_PAIR;
     bool internal immutable IS_TOKEN_FIRST;
     address internal immutable REVENUE_WALLET;
@@ -51,9 +50,11 @@ contract Peeps {
     ILock internal immutable LOCK;
     address internal immutable DEPLOYER;
 
+    uint256 internal constant HUNDRED_PERCENT = 100;
     uint256 internal constant PAID_OFFSET = 96;
     uint256 internal constant MASK_160 = type(uint160).max;
     uint256 internal constant MASK_96 = type(uint96).max;
+    uint256 internal constant WAD = 1e18;
 
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
@@ -228,11 +229,11 @@ contract Peeps {
                 // selling -> calculate potential sellers onus
                 (uint256 reserveToken, uint256 reserveWETH) = _getReserves();
 
-                uint256 sellingFor = _getAmountOut(amount, reserveToken, reserveWETH);
+                uint256 sellingFor = _getAmountOut(amount, reserveToken, reserveWETH) * WAD;
                 uint256 paidFor = amount * fromPaid / fromBought;
 
                 if (sellingFor > paidFor) {
-                    uint256 onus = BlazeLibrary.getOnus(LOCK.getTotalOnus(), sellingFor - paidFor);
+                    uint256 onus = BlazeLibrary.getOnus(LOCK.getTotalOnus(), sellingFor - paidFor) / WAD;
                     _executeSwap(from, onus, reserveToken, reserveWETH);
 
                     amount -= onus;
@@ -245,7 +246,7 @@ contract Peeps {
                 (uint256 reserveToken, uint256 reserveWETH) = _getReserves();
                 console2.log(reserveToken, reserveWETH);
 
-                toPaid += _getAmountIn(amount, reserveWETH, reserveToken);
+                toPaid += _getAmountIn(amount, reserveWETH, reserveToken) * WAD;
             } else {
                 // pleb transfer -> transfer their onus details
                 uint256 wouldPay = amount * fromPaid / fromBought;
