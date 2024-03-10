@@ -10,12 +10,12 @@ import {LockMock} from "./mocks/LockMock.sol";
 import {IUniswapV2Pair} from "v2-core/interfaces/IUniswapV2Pair.sol";
 
 contract PeepsInternal is Peeps {
-    constructor(address _revenueWallet, address _weth, IUniswapV2Factory _factory, address lock, uint88 _totalSupply)
+    constructor(address _revenueWallet, address _weth, IUniswapV2Factory _factory, address lock, uint96 _totalSupply)
         Peeps(_revenueWallet, _weth, _factory, lock, _totalSupply)
     {}
 
-    function updateBalanceInfo(address addr, uint256 bought, uint256 paid, uint256 amount) external {
-        return _updateBalanceInfo(addr, bought, paid, amount);
+    function updateBalanceInfo(address addr, uint256 paid, uint256 amount) external {
+        return _updateBalanceInfo(addr, paid, amount);
     }
 }
 
@@ -32,7 +32,7 @@ contract PeepsTest is Test {
 
     uint256 private constant ETH_LIQUIDITY = 1 ether;
     address private constant REVENUE_WALLET = address(0xbabe);
-    uint88 private constant TOTAL_SUPPLY = type(uint88).max;
+    uint96 private constant TOTAL_SUPPLY = type(uint96).max;
     uint256 public constant UNI_MINIMUM_LIQUIDITY = 10 ** 3;
     address private constant ALICE = address(0x1234);
     address private constant BOB = address(0x1233);
@@ -79,15 +79,15 @@ contract PeepsTest is Test {
         deal(address(this), 100 ether);
     }
 
-    function testBalancePacking(address addr, uint88 bought, uint80 paid, uint88 amount) public {
+    function testBalancePacking(address addr, uint160 paid, uint96 amount) public {
         PeepsInternal peepsInternal =
             new PeepsInternal(REVENUE_WALLET, address(weth), v2Factory, address(lockMock), TOTAL_SUPPLY);
 
-        peepsInternal.updateBalanceInfo(addr, bought, paid, amount);
+        peepsInternal.updateBalanceInfo(addr, paid, amount);
 
-        (uint256 actualBought, uint256 actualPaid, uint256 actualAmount) = peepsInternal.readBalanceInfo(addr);
+        (uint256 actualPaid, uint256 actualAmount) = peepsInternal.readBalanceInfo(addr);
 
-        assertEq(actualBought, bought);
+        assertEq(peepsInternal.balanceOf(addr), amount);
         assertEq(actualPaid, paid);
         assertEq(actualAmount, amount);
     }
@@ -149,8 +149,7 @@ contract PeepsTest is Test {
 
         assertEq(peeps.balanceOf(ALICE), expectedAmountOut);
 
-        (uint256 bought, uint256 paid, uint256 amount) = peeps.readBalanceInfo(ALICE);
-        assertEq(bought, expectedAmountOut);
+        (uint256 paid, uint256 amount) = peeps.readBalanceInfo(ALICE);
         assertEq(paid, amountEth);
         assertEq(amount, expectedAmountOut);
     }
@@ -175,15 +174,11 @@ contract PeepsTest is Test {
         assertEq(peeps.balanceOf(ALICE), expectedAmountOut - transferAmount);
         assertEq(peeps.balanceOf(BOB), transferAmount);
 
-        (uint256 aliceBought, uint256 alicePaid, uint256 aliceAmount) = peeps.readBalanceInfo(ALICE);
-        assertEq(aliceBought, expectedAmountOut - transferAmount);
-
+        (uint256 alicePaid, uint256 aliceAmount) = peeps.readBalanceInfo(ALICE);
         assertEq(alicePaid, amountEth - amountEth * transferAmount / expectedAmountOut);
         assertEq(aliceAmount, expectedAmountOut - transferAmount);
 
-        (uint256 bobBought, uint256 bobPaid, uint256 bobAmount) = peeps.readBalanceInfo(BOB);
-                
-        assertEq(bobBought, transferAmount);
+        (uint256 bobPaid, uint256 bobAmount) = peeps.readBalanceInfo(BOB);
         assertEq(bobPaid, amountEth * transferAmount / expectedAmountOut);
         assertEq(bobAmount, transferAmount);
 

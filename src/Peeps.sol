@@ -8,12 +8,15 @@ import {BlazeLibrary} from "./libraries/BlazeLibrary.sol";
 import {IUniswapV2Router02} from "v2-periphery/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "v2-core/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "v2-core/interfaces/IUniswapV2Pair.sol";
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {console2} from "forge-std/Test.sol";
 
 /// @notice Peep
 /// @author fico23
 /// @author Modified from Solmate (https://github.com/transmissions11/solmate/blob/main/src/tokens/ERC20.sol)
 contract Peeps {
+    using FixedPointMathLib for uint256;
+
     /*//////////////////////////////////////////////////////////////
                               ERC20 STORAGE
     //////////////////////////////////////////////////////////////*/
@@ -21,9 +24,8 @@ contract Peeps {
     uint256 public immutable totalSupply;
 
     // Bits Layout:
-    // - [0..87]    `bought`
-    // - [88..167]  `paid`
-    // - [168..255] `amount`
+    // - [0..159]    `paid`
+    // - [160..255] `amount`
     mapping(address => uint256) internal _balanceOf;
 
     mapping(address => mapping(address => uint256)) public allowance;
@@ -49,10 +51,9 @@ contract Peeps {
     ILock internal immutable LOCK;
     address internal immutable DEPLOYER;
 
-    uint256 internal constant BOUGHT_OFFSET = 168;
-    uint256 internal constant PAID_OFFSET = 88;
-    uint256 internal constant MASK_80 = type(uint80).max;
-    uint256 internal constant MASK_88 = type(uint88).max;
+    uint256 internal constant PAID_OFFSET = 96;
+    uint256 internal constant MASK_160 = type(uint160).max;
+    uint256 internal constant MASK_96 = type(uint96).max;
 
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
@@ -75,7 +76,7 @@ contract Peeps {
                                CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    constructor(address _revenueWallet, address _weth, IUniswapV2Factory _factory, address lock, uint88 _totalSupply) {
+    constructor(address _revenueWallet, address _weth, IUniswapV2Factory _factory, address lock, uint96 _totalSupply) {
         INITIAL_CHAIN_ID = block.chainid;
         INITIAL_DOMAIN_SEPARATOR = computeDomainSeparator();
 
@@ -191,7 +192,7 @@ contract Peeps {
         );
     }
 
-    function readBalanceInfo(address addr) external view returns (uint256, uint256, uint256) {
+    function readBalanceInfo(address addr) external view returns (uint256, uint256) {
         return _readBalanceInfo(addr);
     }
 
@@ -199,30 +200,26 @@ contract Peeps {
                         INTERNAL MINT/BURN LOGIC
     //////////////////////////////////////////////////////////////*/
 
-    function _readBalanceInfo(address addr) internal view returns (uint256 bought, uint256 paid, uint256 amount) {
+    function _readBalanceInfo(address addr) internal view returns (uint256 paid, uint256 amount) {
         uint256 balanceInfo = _balanceOf[addr];
 
-        bought = balanceInfo >> BOUGHT_OFFSET;
-        paid = balanceInfo >> PAID_OFFSET & MASK_80;
-        amount = balanceInfo & MASK_88;
+        paid = balanceInfo >> PAID_OFFSET & MASK_160;
+        amount = balanceInfo & MASK_96;
     }
 
-    function _updateBalanceInfoEnded(address addr, uint256 amount) internal {
+    function _updateBalanceInfo(address addr, uint256 paid, uint256 amount) internal {
         // cleanup ends, paid, bought
-        _balanceOf[addr] = amount & MASK_88;
-    }
-
-    function _updateBalanceInfo(address addr, uint256 bought, uint256 paid, uint256 amount) internal {
-        // cleanup ends, paid, bought
-        _balanceOf[addr] = amount | paid << PAID_OFFSET | bought << BOUGHT_OFFSET;
+        _balanceOf[addr] = amount | paid << PAID_OFFSET;
     }
 
     function _transfer(address from, address to, uint256 amount) internal {
-        (uint256 fromBought, uint256 fromPaid, uint256 fromAmount) = _readBalanceInfo(from);
-        (uint256 toBought, uint256 toPaid, uint256 toAmount) = _readBalanceInfo(to);
+        (uint256 fromPaid, uint256 fromAmount) = _readBalanceInfo(from);
+        (uint256 toPaid, uint256 toAmount) = _readBalanceInfo(to);
         console2.log("transfer from:%s to:%s amount:%s", from, to, amount);
-        console2.log("fromBought:%s fromPaid:%s fromAmount:%s", fromBought, fromPaid, fromAmount);
-        console2.log("toBought:%s toPaid:%s toAmount:%s", toBought, toPaid, toAmount);
+        console2.log("fromPaid:%s fromAmount:%s", fromPaid, fromAmount);
+        console2.log("toPaid:%s toAmount:%s", toPaid, toAmount);
+
+        uint256 fromBought = fromAmount;
 
         fromAmount -= amount;
         unchecked {
@@ -231,10 +228,8 @@ contract Peeps {
                 // selling -> calculate potential sellers onus
                 (uint256 reserveToken, uint256 reserveWETH) = _getReserves();
 
-                uint256 onusableAmount = amount < fromBought ? amount : fromBought;
-
-                uint256 sellingFor = _getAmountOut(onusableAmount, reserveToken, reserveWETH);
-                uint256 paidFor = onusableAmount * fromBought / fromPaid;
+                uint256 sellingFor = _getAmountOut(amount, reserveToken, reserveWETH);
+                uint256 paidFor = amount * fromPaid / fromBought;
 
                 if (sellingFor > paidFor) {
                     uint256 onus = BlazeLibrary.getOnus(LOCK.getTotalOnus(), sellingFor - paidFor);
@@ -243,7 +238,6 @@ contract Peeps {
                     amount -= onus;
                 }
 
-                fromBought -= amount;
                 fromPaid -= sellingFor;
             } else if (from == address(UNI_V2_PAIR)) {
                 console2.log("buy");
@@ -251,27 +245,23 @@ contract Peeps {
                 (uint256 reserveToken, uint256 reserveWETH) = _getReserves();
                 console2.log(reserveToken, reserveWETH);
 
-                toBought += amount;
                 toPaid += _getAmountIn(amount, reserveWETH, reserveToken);
             } else {
                 // pleb transfer -> transfer their onus details
                 uint256 wouldPay = amount * fromPaid / fromBought;
-                fromBought -= amount;
-                fromPaid -= wouldPay;
 
-                toBought += amount;
+                fromPaid -= wouldPay;
                 toPaid += wouldPay;
             }
 
             toAmount += amount;
         }
 
-                
-        console2.log("fromBought:%s fromPaid:%s fromAmount:%s", fromBought, fromPaid, fromAmount);
-        console2.log("toBought:%s toPaid:%s toAmount:%s", toBought, toPaid, toAmount);
+        console2.log(" fromPaid:%s fromAmount:%s", fromPaid, fromAmount);
+        console2.log(" toPaid:%s toAmount:%s", toPaid, toAmount);
 
-        _updateBalanceInfo(from, fromBought, fromPaid, fromAmount);
-        _updateBalanceInfo(to, toBought, toPaid, toAmount);
+        _updateBalanceInfo(from, fromPaid, fromAmount);
+        _updateBalanceInfo(to, toPaid, toAmount);
         emit Transfer(from, to, amount);
     }
 
@@ -345,6 +335,6 @@ contract Peeps {
     }
 
     function balanceOf(address addr) public view returns (uint256) {
-        return uint256(uint88(_balanceOf[addr]));
+        return uint256(uint96(_balanceOf[addr]));
     }
 }
