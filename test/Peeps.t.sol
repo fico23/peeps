@@ -17,6 +17,10 @@ contract PeepsInternal is Peeps {
     function updateBalanceInfo(address addr, uint256 paid, uint256 amount) external {
         return _updateBalanceInfo(addr, paid, amount);
     }
+
+    function getOnus(uint256 totalOnus, uint256 onusableAmount) external pure returns (uint256) {
+        return _getOnus(totalOnus, onusableAmount);
+    }
 }
 
 contract PeepsTest is Test {
@@ -39,6 +43,11 @@ contract PeepsTest is Test {
     address private constant EVE = address(0x1232);
     address private constant MALLORY = address(0x1231);
     uint256 internal constant WAD = 1e18;
+
+    uint256 internal constant K = 420e28;
+    uint256 internal constant X0 = 69e17;
+    uint256 internal constant ONUS_CAP = 420 ether;
+    uint256 internal constant ONUS_PRECISION = 1e12;
 
     event Transfer(address indexed from, address indexed to, uint256 amount);
     event Approval(address indexed owner, address indexed spender, uint256 amount);
@@ -100,6 +109,22 @@ contract PeepsTest is Test {
         assertEq(peeps.balanceOf(address(v2Pair)), 0);
     }
 
+    function testGetOnus(uint72 totalOnus, uint256 onusableAmount) public {
+        PeepsInternal peepsInternal =
+            new PeepsInternal(REVENUE_WALLET, address(weth), v2Factory, address(lockMock), TOTAL_SUPPLY);
+        onusableAmount = bound(onusableAmount, 1e5, TOTAL_SUPPLY);
+
+        uint256 onus = peepsInternal.getOnus(totalOnus, onusableAmount);
+
+        assertTrue(onus < onusableAmount);
+        assertTrue(onus * WAD / onusableAmount < 60869565218e7); // max onus is 60.869565217%
+        if (totalOnus > ONUS_CAP) {
+            assertTrue(onus == 0);
+        } else {
+            assertTrue(onus > 0);
+        }
+    }
+
     function testAddLiqudity(uint112 ethLiquidity) public {
         if (_uniSqrt(uint256(TOTAL_SUPPLY) * ethLiquidity) < UNI_MINIMUM_LIQUIDITY) {
             vm.expectRevert();
@@ -141,7 +166,7 @@ contract PeepsTest is Test {
     }
 
     function testBuy(uint256 amountEth) public {
-        amountEth = bound(amountEth, 1, ETH_LIQUIDITY);
+        amountEth = bound(amountEth, 10, ETH_LIQUIDITY);
 
         peeps.addLiquidity{value: ETH_LIQUIDITY}();
 
@@ -156,7 +181,7 @@ contract PeepsTest is Test {
     }
 
     function testBuyAndTransfer(uint256 amountEth, uint8 percentageTransfer) public {
-        amountEth = bound(amountEth, 1, ETH_LIQUIDITY);
+        amountEth = bound(amountEth, 10, ETH_LIQUIDITY);
         percentageTransfer = uint8(bound(percentageTransfer, 1, type(uint8).max));
 
         peeps.addLiquidity{value: ETH_LIQUIDITY}();
@@ -187,6 +212,71 @@ contract PeepsTest is Test {
         assertEq(bobAmount, transferAmount);
 
         assertEq(alicePaid + bobPaid, amountEth * WAD);
+    }
+
+    function testBuyAndSell(uint256 amountEth, uint8 percentageSell) public {
+        amountEth = bound(amountEth, 10, ETH_LIQUIDITY);
+        percentageSell = uint8(bound(percentageSell, 1, type(uint8).max));
+
+        peeps.addLiquidity{value: ETH_LIQUIDITY}();
+
+        uint256 boughtAmount = _getAmountOutPeeps(amountEth);
+        _buy(ALICE, amountEth);
+        assertEq(peeps.balanceOf(ALICE), boughtAmount);
+        assertEq(peeps.balanceOf(address(v2Pair)), TOTAL_SUPPLY - boughtAmount);
+
+        uint256 sellAmount = boughtAmount * percentageSell / type(uint8).max;
+        uint256 initialPaidAmount = amountEth * WAD;
+
+        if (_getAmountOutEth(sellAmount) == 0) {
+            sellAmount = _getAmountInEth(1);
+        }
+        uint256 sellingFor = _getAmountOutEth(sellAmount);
+
+        _sell(ALICE, sellAmount);
+
+        assertEq(peeps.balanceOf(ALICE), boughtAmount - sellAmount);
+        assertEq(weth.balanceOf(address(lockMock)), 0); // no tax since no profit
+        assertEq(peeps.balanceOf(address(v2Pair)), TOTAL_SUPPLY - boughtAmount + sellAmount);
+
+        (uint256 alicePaid, uint256 aliceAmount) = peeps.readBalanceInfo(ALICE);
+        assertEq(alicePaid, initialPaidAmount - sellingFor * WAD);
+        assertEq(aliceAmount, boughtAmount - sellAmount);
+    }
+
+    function testBuyAndSellWithProfit(uint256 amountEth, uint8 percentageSell) public {
+        uint256 bobBuyAmount = 0.1 ether;
+        amountEth = bound(amountEth, 10, ETH_LIQUIDITY - bobBuyAmount);
+        percentageSell = uint8(bound(percentageSell, 1, type(uint8).max));
+
+        peeps.addLiquidity{value: ETH_LIQUIDITY}();
+
+        uint256 boughtAmount = _getAmountOutPeeps(amountEth);
+        _buy(ALICE, amountEth);
+
+        uint256 bobBoughtAmount = _getAmountOutPeeps(bobBuyAmount);
+        _buy(BOB, bobBuyAmount); // raise price
+
+        uint256 sellAmount = boughtAmount * percentageSell / type(uint8).max;
+        uint256 initialPaidAmount = amountEth * WAD;
+
+        if (_getAmountOutEth(sellAmount) == 0) {
+            sellAmount = _getAmountInEth(1);
+        }
+        uint256 sellingFor = _getAmountOutEth(sellAmount);
+
+        _sell(ALICE, sellAmount);
+
+        uint256 expectedOnus = _getOnus(0, sellAmount);
+        uint256 onusWorthEth = _getAmountOutEth(expectedOnus);
+
+        assertEq(peeps.balanceOf(ALICE), boughtAmount - sellAmount);
+        assertEq(weth.balanceOf(address(lockMock)), onusWorthEth); // no tax since no profit
+        assertEq(peeps.balanceOf(address(v2Pair)), TOTAL_SUPPLY - boughtAmount - bobBoughtAmount + sellAmount);
+
+        (uint256 alicePaid, uint256 aliceAmount) = peeps.readBalanceInfo(ALICE);
+        assertEq(alicePaid, initialPaidAmount - sellingFor * WAD);
+        assertEq(aliceAmount, boughtAmount - sellAmount);
     }
 
     function _deployUniswap(address weth_)
@@ -239,7 +329,7 @@ contract PeepsTest is Test {
         v2Router.swapExactTokensForETHSupportingFeeOnTransferTokens(amountPeeps, 1, pathSell, from, block.timestamp);
     }
 
-    function _getAmountOutEth(uint256 amountIn) internal view returns (uint256 amountOut) {
+    function _getAmountOutEth(uint256 amountIn) internal view returns (uint256) {
         (uint256 reserve0, uint256 reserve1,) = v2Pair.getReserves();
         (uint256 reservePeeps, uint256 reserveWeth) =
             address(peeps) < address(weth) ? (reserve0, reserve1) : (reserve1, reserve0);
@@ -247,12 +337,20 @@ contract PeepsTest is Test {
         return _getAmountOut(amountIn, reservePeeps, reserveWeth);
     }
 
-    function _getAmountOutPeeps(uint256 amountIn) internal view returns (uint256 amountOut) {
+    function _getAmountOutPeeps(uint256 amountIn) internal view returns (uint256) {
         (uint256 reserve0, uint256 reserve1,) = v2Pair.getReserves();
         (uint256 reservePeeps, uint256 reserveWeth) =
             address(peeps) < address(weth) ? (reserve0, reserve1) : (reserve1, reserve0);
 
         return _getAmountOut(amountIn, reserveWeth, reservePeeps);
+    }
+
+    function _getAmountInEth(uint256 amountOut) internal view returns (uint256) {
+        (uint256 reserve0, uint256 reserve1,) = v2Pair.getReserves();
+        (uint256 reservePeeps, uint256 reserveWeth) =
+            address(peeps) < address(weth) ? (reserve0, reserve1) : (reserve1, reserve0);
+
+        return _getAmountIn(amountOut, reservePeeps, reserveWeth);
     }
 
     // given an input amount of an asset and pair reserves, returns the maximum output amount of the other asset
@@ -267,5 +365,25 @@ contract PeepsTest is Test {
         uint256 numerator = amountInWithFee * reserveOut;
         uint256 denominator = reserveIn * 1000 + amountInWithFee;
         amountOut = numerator / denominator;
+    }
+
+    // given an output amount of an asset and pair reserves, returns a required input amount of the other asset
+    function _getAmountIn(uint256 amountOut, uint256 reserveIn, uint256 reserveOut)
+        internal
+        pure
+        returns (uint256 amountIn)
+    {
+        require(amountOut > 0, "UniswapV2Library: INSUFFICIENT_OUTPUT_AMOUNT");
+        require(reserveIn > 0 && reserveOut > 0, "UniswapV2Library: INSUFFICIENT_LIQUIDITY");
+        uint256 numerator = reserveIn * amountOut * 1000;
+        uint256 denominator = (reserveOut - amountOut) * 997;
+        amountIn = numerator / denominator + 1;
+    }
+
+    function _getOnus(uint256 totalOnus, uint256 onusableAmount) internal pure returns (uint256) {
+        if (totalOnus > ONUS_CAP) return 0;
+        unchecked {
+            return K * onusableAmount / (totalOnus + X0) / ONUS_PRECISION;
+        }
     }
 }

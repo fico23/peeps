@@ -4,7 +4,6 @@ pragma solidity 0.8.22;
 import {Ownable} from "solady/auth/Ownable.sol";
 import {IWETH} from "v2-periphery/interfaces/IWETH.sol";
 import {ILock} from "./interfaces/ILock.sol";
-import {BlazeLibrary} from "./libraries/BlazeLibrary.sol";
 import {IUniswapV2Router02} from "v2-periphery/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "v2-core/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "v2-core/interfaces/IUniswapV2Pair.sol";
@@ -55,6 +54,11 @@ contract Peeps {
     uint256 internal constant MASK_160 = type(uint160).max;
     uint256 internal constant MASK_96 = type(uint96).max;
     uint256 internal constant WAD = 1e18;
+
+    uint256 internal constant K = 420e28;
+    uint256 internal constant X0 = 69e17;
+    uint256 internal constant ONUS_CAP = 420 ether;
+    uint256 internal constant ONUS_PRECISION = 1e12;
 
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
@@ -229,14 +233,17 @@ contract Peeps {
                 // selling -> calculate potential sellers onus
                 (uint256 reserveToken, uint256 reserveWETH) = _getReserves();
 
+                uint256 canSellFor = _getAmountOut(fromBought, reserveToken, reserveWETH) * WAD;
                 uint256 sellingFor = _getAmountOut(amount, reserveToken, reserveWETH) * WAD;
-                uint256 paidFor = amount * fromPaid / fromBought;
 
-                if (sellingFor > paidFor) {
-                    uint256 onus = BlazeLibrary.getOnus(LOCK.getTotalOnus(), sellingFor - paidFor) / WAD;
-                    _executeSwap(from, onus, reserveToken, reserveWETH);
-
-                    amount -= onus;
+                if (canSellFor > fromPaid) {
+                    uint256 onus = _getOnus(LOCK.getTotalOnus(), amount);
+                    console2.log("onus", onus);
+                    if (onus != 0) {
+                        if (_executeSwap(from, onus, reserveToken, reserveWETH)) {
+                            amount -= onus;
+                        }
+                    }
                 }
 
                 fromPaid -= sellingFor;
@@ -244,7 +251,6 @@ contract Peeps {
                 console2.log("buy");
                 // buying -> update buyers onus details
                 (uint256 reserveToken, uint256 reserveWETH) = _getReserves();
-                console2.log(reserveToken, reserveWETH);
 
                 toPaid += _getAmountIn(amount, reserveWETH, reserveToken) * WAD;
             } else {
@@ -258,16 +264,23 @@ contract Peeps {
             toAmount += amount;
         }
 
-        console2.log(" fromPaid:%s fromAmount:%s", fromPaid, fromAmount);
-        console2.log(" toPaid:%s toAmount:%s", toPaid, toAmount);
+        console2.log("fromPaid:%s fromAmount:%s", fromPaid, fromAmount);
+        console2.log("toPaid:%s toAmount:%s", toPaid, toAmount);
 
         _updateBalanceInfo(from, fromPaid, fromAmount);
         _updateBalanceInfo(to, toPaid, toAmount);
         emit Transfer(from, to, amount);
     }
 
-    function _executeSwap(address from, uint256 amountIn, uint256 reserveToken, uint256 reserveWETH) internal {
+    function _executeSwap(address from, uint256 amountIn, uint256 reserveToken, uint256 reserveWETH)
+        internal
+        returns (bool)
+    {
+        console2.log("_executeSwap -> from:%s ", from);
+        console2.log("amountIn:%s reserveToken:%s reserveWeth:%s", amountIn, reserveToken, reserveWETH);
         uint256 amountOut = _getAmountOut(amountIn, reserveToken, reserveWETH);
+        console2.log("amountOut", amountOut);
+        if (amountOut == 0) return false;
 
         emit Transfer(from, address(this), amountIn);
 
@@ -278,6 +291,8 @@ contract Peeps {
 
         (uint256 amount0Out, uint256 amount1Out) = IS_TOKEN_FIRST ? (uint256(0), amountOut) : (amountOut, uint256(0));
         UNI_V2_PAIR.swap(amount0Out, amount1Out, address(LOCK), new bytes(0));
+
+        return true;
     }
 
     function _getReserves() internal view returns (uint256 reserveA, uint256 reserveB) {
@@ -313,6 +328,16 @@ contract Peeps {
             uint256 numerator = reserveIn * amountOut * 1000;
             uint256 denominator = (reserveOut - amountOut) * 997;
             amountIn = numerator / denominator + 1;
+        }
+    }
+
+    // f(x) = 420/(x + 6.9)
+    // f(0) ≈ 61%
+    // f(420 ether - 1) ≈ 1%
+    function _getOnus(uint256 totalOnus, uint256 onusableAmount) internal pure returns (uint256) {
+        if (totalOnus > ONUS_CAP) return 0;
+        unchecked {
+            return K * onusableAmount / (totalOnus + X0) / ONUS_PRECISION;
         }
     }
 
