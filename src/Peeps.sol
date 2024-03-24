@@ -27,7 +27,6 @@ contract Peeps {
     // //////////////////////////////////////////////////////////////*/
     IUniswapV2Pair internal immutable UNI_V2_PAIR;
     bool internal immutable IS_TOKEN_FIRST;
-    address internal immutable REVENUE_WALLET;
     IWETH internal immutable WETH;
     ILock internal immutable LOCK;
     address internal immutable DEPLOYER;
@@ -74,11 +73,9 @@ contract Peeps {
                                CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    constructor(address _revenueWallet, address _weth, IUniswapV2Factory _factory, address lock, uint96 _totalSupply) {
+    constructor(address _weth, IUniswapV2Factory _factory, address lock, uint96 _totalSupply) {
         INITIAL_CHAIN_ID = block.chainid;
         INITIAL_DOMAIN_SEPARATOR = computeDomainSeparator();
-
-        REVENUE_WALLET = _revenueWallet;
 
         WETH = IWETH(_weth);
         IS_TOKEN_FIRST = address(this) < _weth;
