@@ -8,6 +8,7 @@ import {IUniswapV2Router02} from "v2-periphery/interfaces/IUniswapV2Router02.sol
 import {IUniswapV2Factory} from "v2-core/interfaces/IUniswapV2Factory.sol";
 import {Lock} from "../src/Lock.sol";
 import {IUniswapV2Pair} from "v2-core/interfaces/IUniswapV2Pair.sol";
+import {Create2Deployer} from "create2deployer/contracts/Create2Deployer.sol";
 
 contract PeepsInternal is Peeps {
     constructor(address _revenueWallet, address _weth, IUniswapV2Factory _factory, address lock, uint96 _totalSupply)
