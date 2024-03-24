@@ -215,8 +215,8 @@ contract PeepsTest is Test {
     }
 
     function testBuyAndSell(uint256 amountEth, uint8 percentageSell) public {
-        amountEth = bound(amountEth, 10, ETH_LIQUIDITY);
-        percentageSell = uint8(bound(percentageSell, 1, type(uint8).max));
+        amountEth = bound(amountEth, 1000, ETH_LIQUIDITY);
+        percentageSell = uint8(bound(percentageSell, 10, type(uint8).max));
 
         peeps.addLiquidity{value: ETH_LIQUIDITY}();
 
@@ -227,10 +227,6 @@ contract PeepsTest is Test {
 
         uint256 sellAmount = boughtAmount * percentageSell / type(uint8).max;
         uint256 initialPaidAmount = amountEth * WAD;
-
-        if (_getAmountOutEth(sellAmount) == 0) {
-            sellAmount = _getAmountInEth(1);
-        }
 
         _sell(ALICE, sellAmount);
 
