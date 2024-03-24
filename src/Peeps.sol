@@ -220,55 +220,42 @@ contract Peeps {
     function _transfer(address from, address to, uint256 amount) internal {
         (uint256 fromPaid, uint256 fromAmount) = _readBalanceInfo(from);
         (uint256 toPaid, uint256 toAmount) = _readBalanceInfo(to);
-        console2.log("transfer from:%s to:%s amount:%s", from, to, amount);
-        console2.log("fromPaid:%s fromAmount:%s", fromPaid, fromAmount);
-        console2.log("toPaid:%s toAmount:%s", toPaid, toAmount);
 
         uint256 fromBought = fromAmount;
 
         fromAmount -= amount;
         unchecked {
             if (to == address(UNI_V2_PAIR)) {
-                console2.log("sell");
                 // selling -> calculate potential sellers onus
                 (uint256 reserveToken, uint256 reserveWETH) = _getReserves();
 
                 uint256 canSellFor = _getAmountOut(fromBought, reserveToken, reserveWETH) * WAD;
-                uint256 sellingFor = _getAmountOut(amount, reserveToken, reserveWETH) * WAD;
 
                 if (canSellFor > fromPaid) {
                     uint256 onus = _getOnus(LOCK.getTotalOnus(), amount);
-                    console2.log("onus", onus);
-                    if (onus != 0) {
-                        if (_executeSwap(from, onus, reserveToken, reserveWETH)) {
-                            amount -= onus;
-                        }
+                    console2.log('onus', onus);
+                    if (onus != 0 && _executeSwap(from, onus, reserveToken, reserveWETH)) {
+                        amount -= onus;
                     }
                 }
 
-                fromPaid -= sellingFor;
+                _updateBalanceInfo(from, fromPaid - fromPaid * amount / fromBought, fromAmount);
+                _balanceOf[address(UNI_V2_PAIR)] += amount;
             } else if (from == address(UNI_V2_PAIR)) {
-                console2.log("buy");
                 // buying -> update buyers onus details
                 (uint256 reserveToken, uint256 reserveWETH) = _getReserves();
 
                 toPaid += _getAmountIn(amount, reserveWETH, reserveToken) * WAD;
+                _balanceOf[address(UNI_V2_PAIR)] = fromAmount;
+                _updateBalanceInfo(to, toPaid, toAmount + amount);
             } else {
                 // pleb transfer -> transfer their onus details
                 uint256 wouldPay = amount * fromPaid / fromBought;
 
-                fromPaid -= wouldPay;
-                toPaid += wouldPay;
+                _updateBalanceInfo(from, fromPaid - wouldPay, fromAmount);
+                _updateBalanceInfo(to, toPaid + wouldPay, toAmount + amount);
             }
-
-            toAmount += amount;
         }
-
-        console2.log("fromPaid:%s fromAmount:%s", fromPaid, fromAmount);
-        console2.log("toPaid:%s toAmount:%s", toPaid, toAmount);
-
-        _updateBalanceInfo(from, fromPaid, fromAmount);
-        _updateBalanceInfo(to, toPaid, toAmount);
         emit Transfer(from, to, amount);
     }
 
@@ -276,10 +263,8 @@ contract Peeps {
         internal
         returns (bool)
     {
-        console2.log("_executeSwap -> from:%s ", from);
-        console2.log("amountIn:%s reserveToken:%s reserveWeth:%s", amountIn, reserveToken, reserveWETH);
         uint256 amountOut = _getAmountOut(amountIn, reserveToken, reserveWETH);
-        console2.log("amountOut", amountOut);
+        console2.log('executeSwap amountOut', amountOut);
         if (amountOut == 0) return false;
 
         emit Transfer(from, address(this), amountIn);

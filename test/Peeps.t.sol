@@ -231,7 +231,6 @@ contract PeepsTest is Test {
         if (_getAmountOutEth(sellAmount) == 0) {
             sellAmount = _getAmountInEth(1);
         }
-        uint256 sellingFor = _getAmountOutEth(sellAmount);
 
         _sell(ALICE, sellAmount);
 
@@ -240,7 +239,7 @@ contract PeepsTest is Test {
         assertEq(peeps.balanceOf(address(v2Pair)), TOTAL_SUPPLY - boughtAmount + sellAmount);
 
         (uint256 alicePaid, uint256 aliceAmount) = peeps.readBalanceInfo(ALICE);
-        assertEq(alicePaid, initialPaidAmount - sellingFor * WAD);
+        assertEq(alicePaid, initialPaidAmount - initialPaidAmount * sellAmount / boughtAmount);
         assertEq(aliceAmount, boughtAmount - sellAmount);
     }
 
@@ -261,21 +260,23 @@ contract PeepsTest is Test {
         uint256 initialPaidAmount = amountEth * WAD;
 
         if (_getAmountOutEth(sellAmount) == 0) {
-            sellAmount = _getAmountInEth(1);
+            sellAmount = _getAmountInEth(1) * 2; // after tax it could still lead to 0
         }
         uint256 sellingFor = _getAmountOutEth(sellAmount);
 
-        _sell(ALICE, sellAmount);
-
         uint256 expectedOnus = _getOnus(0, sellAmount);
+        console2.log('expectedOnus', expectedOnus);
         uint256 onusWorthEth = _getAmountOutEth(expectedOnus);
+        console2.log('amountOut', onusWorthEth);
+
+        _sell(ALICE, sellAmount);
 
         assertEq(peeps.balanceOf(ALICE), boughtAmount - sellAmount);
         assertEq(weth.balanceOf(address(lockMock)), onusWorthEth); // no tax since no profit
         assertEq(peeps.balanceOf(address(v2Pair)), TOTAL_SUPPLY - boughtAmount - bobBoughtAmount + sellAmount);
 
         (uint256 alicePaid, uint256 aliceAmount) = peeps.readBalanceInfo(ALICE);
-        assertEq(alicePaid, initialPaidAmount - sellingFor * WAD);
+        assertEq(alicePaid, initialPaidAmount - initialPaidAmount * sellAmount / boughtAmount);
         assertEq(aliceAmount, boughtAmount - sellAmount);
     }
 
