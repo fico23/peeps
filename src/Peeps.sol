@@ -265,6 +265,8 @@ contract Peeps {
 
         (uint256 amount0Out, uint256 amount1Out) = IS_TOKEN_FIRST ? (uint256(0), amountOut) : (amountOut, uint256(0));
         UNI_V2_PAIR.swap(amount0Out, amount1Out, address(LOCK), new bytes(0));
+
+        LOCK.notifyAmount(amountOut);
     }
 
     function _getReserves() internal view returns (uint256 reserveA, uint256 reserveB) {

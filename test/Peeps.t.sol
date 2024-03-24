@@ -6,7 +6,7 @@ import {Peeps} from "../src/Peeps.sol";
 import {WETH} from "solady/tokens/WETH.sol";
 import {IUniswapV2Router02} from "v2-periphery/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "v2-core/interfaces/IUniswapV2Factory.sol";
-import {LockMock} from "./mocks/LockMock.sol";
+import {Lock} from "../src/Lock.sol";
 import {IUniswapV2Pair} from "v2-core/interfaces/IUniswapV2Pair.sol";
 
 contract PeepsInternal is Peeps {
@@ -29,7 +29,7 @@ contract PeepsTest is Test {
     IUniswapV2Factory v2Factory;
     IUniswapV2Router02 v2Router;
     IUniswapV2Pair v2Pair;
-    LockMock lockMock;
+    Lock lock;
 
     address[] internal pathBuy;
     address[] internal pathSell;
@@ -53,13 +53,13 @@ contract PeepsTest is Test {
     event Approval(address indexed owner, address indexed spender, uint256 amount);
 
     function setUp() public {
-        lockMock = new LockMock();
+        lock = new Lock();
 
         weth = new WETH();
 
         (v2Factory, v2Router) = _deployUniswap(address(weth));
 
-        peeps = new Peeps(REVENUE_WALLET, address(weth), v2Factory, address(lockMock), TOTAL_SUPPLY);
+        peeps = new Peeps(REVENUE_WALLET, address(weth), v2Factory, address(lock), TOTAL_SUPPLY);
 
         peeps.approve(address(v2Router), TOTAL_SUPPLY);
 
@@ -71,7 +71,7 @@ contract PeepsTest is Test {
         pathSell.push(address(peeps));
         pathSell.push(address(weth));
 
-        vm.label(address(lockMock), "LOCK");
+        vm.label(address(lock), "LOCK");
         vm.label(address(weth), "WETH");
         vm.label(address(v2Factory), "UNI_FACTORY");
         vm.label(address(v2Router), "UNI_ROUTER");
@@ -91,7 +91,7 @@ contract PeepsTest is Test {
 
     function testBalancePacking(address addr, uint160 paid, uint96 amount) public {
         PeepsInternal peepsInternal =
-            new PeepsInternal(REVENUE_WALLET, address(weth), v2Factory, address(lockMock), TOTAL_SUPPLY);
+            new PeepsInternal(REVENUE_WALLET, address(weth), v2Factory, address(lock), TOTAL_SUPPLY);
 
         peepsInternal.updateBalanceInfo(addr, paid, amount);
 
@@ -111,7 +111,7 @@ contract PeepsTest is Test {
 
     function testGetOnus(uint72 totalOnus, uint256 onusableAmount) public {
         PeepsInternal peepsInternal =
-            new PeepsInternal(REVENUE_WALLET, address(weth), v2Factory, address(lockMock), TOTAL_SUPPLY);
+            new PeepsInternal(REVENUE_WALLET, address(weth), v2Factory, address(lock), TOTAL_SUPPLY);
         onusableAmount = bound(onusableAmount, 1e5, TOTAL_SUPPLY);
 
         uint256 onus = peepsInternal.getOnus(totalOnus, onusableAmount);
@@ -231,7 +231,7 @@ contract PeepsTest is Test {
         _sell(ALICE, sellAmount);
 
         assertEq(peeps.balanceOf(ALICE), boughtAmount - sellAmount);
-        assertEq(weth.balanceOf(address(lockMock)), 0); // no tax since no profit
+        assertEq(weth.balanceOf(address(lock)), 0); // no tax since no profit
         assertEq(peeps.balanceOf(address(v2Pair)), TOTAL_SUPPLY - boughtAmount + sellAmount);
 
         (uint256 alicePaid, uint256 aliceAmount) = peeps.readBalanceInfo(ALICE);
@@ -261,7 +261,7 @@ contract PeepsTest is Test {
         _sell(ALICE, sellAmount);
 
         assertEq(peeps.balanceOf(ALICE), boughtAmount - sellAmount);
-        assertEq(weth.balanceOf(address(lockMock)), onusWorthEth); // taxed on profit
+        assertEq(weth.balanceOf(address(lock)), onusWorthEth); // taxed on profit
         assertEq(peeps.balanceOf(address(v2Pair)), TOTAL_SUPPLY - boughtAmount - bobBoughtAmount + sellAmount);
 
         (uint256 alicePaid, uint256 aliceAmount) = peeps.readBalanceInfo(ALICE);
@@ -287,12 +287,12 @@ contract PeepsTest is Test {
         uint256 sellAmount = boughtAmount * percentageSell / type(uint8).max;
         uint256 initialPaidAmount = amountEth * WAD;
 
-        uint256 onusBefore = weth.balanceOf(address(lockMock));
+        uint256 onusBefore = weth.balanceOf(address(lock));
 
         _sell(ALICE, sellAmount);
 
         assertEq(peeps.balanceOf(ALICE), boughtAmount - sellAmount);
-        assertEq(weth.balanceOf(address(lockMock)), onusBefore); // no tax since no profit
+        assertEq(weth.balanceOf(address(lock)), onusBefore); // no tax since no profit
         assertEq(peeps.balanceOf(address(v2Pair)), TOTAL_SUPPLY - boughtAmount + sellAmount);
 
         (uint256 alicePaid, uint256 aliceAmount) = peeps.readBalanceInfo(ALICE);

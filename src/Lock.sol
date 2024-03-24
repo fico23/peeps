@@ -3,9 +3,8 @@ pragma solidity 0.8.22;
 
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
-import {IUniswapV2Callee} from "v2-core/interfaces/IUniswapV2Callee.sol";
 
-contract Lock is IUniswapV2Callee {
+contract Lock {
     using FixedPointMathLib for uint256;
 
     uint256 internal constant LOCK_DURATION = 420 hours;
@@ -155,17 +154,14 @@ contract Lock is IUniswapV2Callee {
         return poolInfo & MASK_69;
     }
 
-    function uniswapV2Call(address sender, uint256 amount0, uint256 amount1, bytes calldata) external {
-        if (msg.sender != UNI_V2_PAIR) revert Unauthorized();
-        if (sender != TOKEN) revert Unauthorized();
-
-        uint256 amountRecieved = IS_TOKEN_FIRST ? amount0 : amount1;
+    function notifyAmounty(uint256 amount) external {
+        if (msg.sender != TOKEN) revert Unauthorized();
 
         (uint256 ethPerToken, uint256 tokenLocked, uint256 totalOnus) = _readPoolInfo();
 
         unchecked {
-            ethPerToken += amountRecieved.divWad(tokenLocked);
-            totalOnus += amountRecieved;
+            ethPerToken += amount.divWad(tokenLocked);
+            totalOnus += amount;
         }
 
         _writePoolInfo(ethPerToken, tokenLocked, totalOnus);

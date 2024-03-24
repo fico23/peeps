@@ -11,4 +11,8 @@ contract LockMock {
     function getTotalOnus() external view returns (uint256) {
         return onus;
     }
+
+    function notifyAmount(uint256 amount) external {
+        onus += amount;
+    }
 }
