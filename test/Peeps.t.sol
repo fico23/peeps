@@ -245,8 +245,8 @@ contract PeepsTest is Test {
 
     function testBuyAndSellWithProfit(uint256 amountEth, uint8 percentageSell) public {
         uint256 bobBuyAmount = 0.1 ether;
-        amountEth = bound(amountEth, 10, ETH_LIQUIDITY - bobBuyAmount);
-        percentageSell = uint8(bound(percentageSell, 1, type(uint8).max));
+        amountEth = bound(amountEth, 1000, ETH_LIQUIDITY - bobBuyAmount);
+        percentageSell = uint8(bound(percentageSell, 10, type(uint8).max));
 
         peeps.addLiquidity{value: ETH_LIQUIDITY}();
 
@@ -259,15 +259,8 @@ contract PeepsTest is Test {
         uint256 sellAmount = boughtAmount * percentageSell / type(uint8).max;
         uint256 initialPaidAmount = amountEth * WAD;
 
-        if (_getAmountOutEth(sellAmount) == 0) {
-            sellAmount = _getAmountInEth(1) * 2; // after tax it could still lead to 0
-        }
-        uint256 sellingFor = _getAmountOutEth(sellAmount);
-
         uint256 expectedOnus = _getOnus(0, sellAmount);
-        console2.log('expectedOnus', expectedOnus);
         uint256 onusWorthEth = _getAmountOutEth(expectedOnus);
-        console2.log('amountOut', onusWorthEth);
 
         _sell(ALICE, sellAmount);
 

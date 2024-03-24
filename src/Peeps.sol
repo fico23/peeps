@@ -231,15 +231,14 @@ contract Peeps {
 
                 uint256 canSellFor = _getAmountOut(fromBought, reserveToken, reserveWETH) * WAD;
 
+                _updateBalanceInfo(from, fromPaid - fromPaid * amount / fromBought, fromAmount);
+
                 if (canSellFor > fromPaid) {
                     uint256 onus = _getOnus(LOCK.getTotalOnus(), amount);
-                    console2.log('onus', onus);
                     if (onus != 0 && _executeSwap(from, onus, reserveToken, reserveWETH)) {
                         amount -= onus;
                     }
                 }
-
-                _updateBalanceInfo(from, fromPaid - fromPaid * amount / fromBought, fromAmount);
                 _balanceOf[address(UNI_V2_PAIR)] += amount;
             } else if (from == address(UNI_V2_PAIR)) {
                 // buying -> update buyers onus details
@@ -250,12 +249,13 @@ contract Peeps {
                 _updateBalanceInfo(to, toPaid, toAmount + amount);
             } else {
                 // pleb transfer -> transfer their onus details
-                uint256 wouldPay = amount * fromPaid / fromBought;
+                uint256 wouldPay = fromPaid * amount / fromBought;
 
                 _updateBalanceInfo(from, fromPaid - wouldPay, fromAmount);
                 _updateBalanceInfo(to, toPaid + wouldPay, toAmount + amount);
             }
         }
+
         emit Transfer(from, to, amount);
     }
 
@@ -264,7 +264,7 @@ contract Peeps {
         returns (bool)
     {
         uint256 amountOut = _getAmountOut(amountIn, reserveToken, reserveWETH);
-        console2.log('executeSwap amountOut', amountOut);
+
         if (amountOut == 0) return false;
 
         emit Transfer(from, address(this), amountIn);
