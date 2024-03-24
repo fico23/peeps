@@ -1,25 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity 0.8.22;
 
-import {Ownable} from "solady/auth/Ownable.sol";
 import {IWETH} from "v2-periphery/interfaces/IWETH.sol";
 import {ILock} from "./interfaces/ILock.sol";
-import {IUniswapV2Router02} from "v2-periphery/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "v2-core/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "v2-core/interfaces/IUniswapV2Pair.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
-import {console2} from "forge-std/Test.sol";
 
-/// @notice Peep
+/// @notice Worlds best tax token
 /// @author fico23
-/// @author Modified from Solmate (https://github.com/transmissions11/solmate/blob/main/src/tokens/ERC20.sol)
 contract Peeps {
-    using FixedPointMathLib for uint256;
-
     /*//////////////////////////////////////////////////////////////
                               ERC20 STORAGE
     //////////////////////////////////////////////////////////////*/
-
     uint256 public immutable totalSupply;
 
     // Bits Layout:
@@ -28,16 +21,6 @@ contract Peeps {
     mapping(address => uint256) internal _balanceOf;
 
     mapping(address => mapping(address => uint256)) public allowance;
-
-    /*//////////////////////////////////////////////////////////////
-                            EIP-2612 STORAGE
-    //////////////////////////////////////////////////////////////*/
-
-    uint256 internal immutable INITIAL_CHAIN_ID;
-
-    bytes32 internal immutable INITIAL_DOMAIN_SEPARATOR;
-
-    mapping(address => uint256) public nonces;
 
     // /*//////////////////////////////////////////////////////////////
     //                         CONSTANTS & IMMUTABLES
@@ -59,6 +42,16 @@ contract Peeps {
     uint256 internal constant X0 = 69e17;
     uint256 internal constant ONUS_CAP = 420 ether;
     uint256 internal constant ONUS_PRECISION = 1e12;
+
+    /*//////////////////////////////////////////////////////////////
+                            EIP-2612 STORAGE
+    //////////////////////////////////////////////////////////////*/
+
+    uint256 internal immutable INITIAL_CHAIN_ID;
+
+    bytes32 internal immutable INITIAL_DOMAIN_SEPARATOR;
+
+    mapping(address => uint256) public nonces;
 
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
@@ -235,7 +228,8 @@ contract Peeps {
 
                 if (canSellFor > fromPaid) {
                     uint256 onus = _getOnus(LOCK.getTotalOnus(), amount);
-                    if (onus != 0 && _executeSwap(from, onus, reserveToken, reserveWETH)) {
+                    if (onus != 0) {
+                        _executeSwap(from, onus, reserveToken, reserveWETH);
                         amount -= onus;
                     }
                 }
@@ -259,13 +253,8 @@ contract Peeps {
         emit Transfer(from, to, amount);
     }
 
-    function _executeSwap(address from, uint256 amountIn, uint256 reserveToken, uint256 reserveWETH)
-        internal
-        returns (bool)
-    {
+    function _executeSwap(address from, uint256 amountIn, uint256 reserveToken, uint256 reserveWETH) internal {
         uint256 amountOut = _getAmountOut(amountIn, reserveToken, reserveWETH);
-
-        if (amountOut == 0) return false;
 
         emit Transfer(from, address(this), amountIn);
 
@@ -276,8 +265,6 @@ contract Peeps {
 
         (uint256 amount0Out, uint256 amount1Out) = IS_TOKEN_FIRST ? (uint256(0), amountOut) : (amountOut, uint256(0));
         UNI_V2_PAIR.swap(amount0Out, amount1Out, address(LOCK), new bytes(0));
-
-        return true;
     }
 
     function _getReserves() internal view returns (uint256 reserveA, uint256 reserveB) {

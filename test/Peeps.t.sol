@@ -261,8 +261,39 @@ contract PeepsTest is Test {
         _sell(ALICE, sellAmount);
 
         assertEq(peeps.balanceOf(ALICE), boughtAmount - sellAmount);
-        assertEq(weth.balanceOf(address(lockMock)), onusWorthEth); // no tax since no profit
+        assertEq(weth.balanceOf(address(lockMock)), onusWorthEth); // taxed on profit
         assertEq(peeps.balanceOf(address(v2Pair)), TOTAL_SUPPLY - boughtAmount - bobBoughtAmount + sellAmount);
+
+        (uint256 alicePaid, uint256 aliceAmount) = peeps.readBalanceInfo(ALICE);
+        assertEq(alicePaid, initialPaidAmount - initialPaidAmount * sellAmount / boughtAmount);
+        assertEq(aliceAmount, boughtAmount - sellAmount);
+    }
+
+    function testBuyAndSellWithLoss(uint256 amountEth, uint8 percentageSell) public {
+        uint256 bobBuyAmount = 0.1 ether;
+        amountEth = bound(amountEth, 1000, ETH_LIQUIDITY - bobBuyAmount);
+        percentageSell = uint8(bound(percentageSell, 10, type(uint8).max));
+
+        peeps.addLiquidity{value: ETH_LIQUIDITY}();
+
+        uint256 bobBoughtAmount = _getAmountOutPeeps(bobBuyAmount);
+        _buy(BOB, bobBuyAmount); // raise price
+
+        uint256 boughtAmount = _getAmountOutPeeps(amountEth);
+        _buy(ALICE, amountEth);
+
+        _sell(BOB, bobBoughtAmount);
+
+        uint256 sellAmount = boughtAmount * percentageSell / type(uint8).max;
+        uint256 initialPaidAmount = amountEth * WAD;
+
+        uint256 onusBefore = weth.balanceOf(address(lockMock));
+
+        _sell(ALICE, sellAmount);
+
+        assertEq(peeps.balanceOf(ALICE), boughtAmount - sellAmount);
+        assertEq(weth.balanceOf(address(lockMock)), onusBefore); // no tax since no profit
+        assertEq(peeps.balanceOf(address(v2Pair)), TOTAL_SUPPLY - boughtAmount + sellAmount);
 
         (uint256 alicePaid, uint256 aliceAmount) = peeps.readBalanceInfo(ALICE);
         assertEq(alicePaid, initialPaidAmount - initialPaidAmount * sellAmount / boughtAmount);
