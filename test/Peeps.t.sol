@@ -8,6 +8,7 @@ import {IUniswapV2Router02} from "v2-periphery/interfaces/IUniswapV2Router02.sol
 import {IUniswapV2Factory} from "v2-core/interfaces/IUniswapV2Factory.sol";
 import {Lock} from "../src/Lock.sol";
 import {IUniswapV2Pair} from "v2-core/interfaces/IUniswapV2Pair.sol";
+import {Create2Deployer} from "create2deployer/flattened/Create2Deployer_Flat_OZ_4_4_1.sol";
 
 contract PeepsInternal is Peeps {
     constructor(address _revenueWallet, address _weth, IUniswapV2Factory _factory, address lock, uint96 _totalSupply)
@@ -30,6 +31,7 @@ contract PeepsTest is Test {
     IUniswapV2Router02 v2Router;
     IUniswapV2Pair v2Pair;
     Lock lock;
+    Create2Deployer create2Deployer;
 
     address[] internal pathBuy;
     address[] internal pathSell;
@@ -43,6 +45,7 @@ contract PeepsTest is Test {
     address private constant EVE = address(0x1232);
     address private constant MALLORY = address(0x1231);
     uint256 internal constant WAD = 1e18;
+    address private constant CREATE2_DEPLOYER_ADDRESS = 0x13b0D85CcB8bf860b6b79AF3029fCA081AE9beF2;
 
     uint256 internal constant K = 420e28;
     uint256 internal constant X0 = 69e17;
@@ -53,6 +56,8 @@ contract PeepsTest is Test {
     event Approval(address indexed owner, address indexed spender, uint256 amount);
 
     function setUp() public {
+        create2Deployer = deployCodeTo("Create2Deployer.sol", bytes(0), CREATE2_DEPLOYER_ADDRESS);
+
         lock = new Lock();
 
         weth = new WETH();
