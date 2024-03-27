@@ -154,7 +154,7 @@ contract Lock {
         return poolInfo & MASK_69;
     }
 
-    function notifyAmounty(uint256 amount) external {
+    function notifyAmount(uint256 amount) external {
         if (msg.sender != TOKEN) revert Unauthorized();
 
         (uint256 ethPerToken, uint256 tokenLocked, uint256 totalOnus) = _readPoolInfo();

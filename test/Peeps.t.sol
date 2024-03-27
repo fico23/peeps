@@ -11,8 +11,8 @@ import {IUniswapV2Pair} from "v2-core/interfaces/IUniswapV2Pair.sol";
 import {Create2Deployer} from "create2deployer/flattened/Create2Deployer_Flat_OZ_4_4_1.sol";
 
 contract PeepsInternal is Peeps {
-    constructor(address _revenueWallet, address _weth, IUniswapV2Factory _factory, address lock, uint96 _totalSupply)
-        Peeps(_revenueWallet, _weth, _factory, lock, _totalSupply)
+    constructor(address _weth, IUniswapV2Factory _factory, address lock, uint96 _totalSupply)
+        Peeps(_weth, _factory, lock, _totalSupply)
     {}
 
     function updateBalanceInfo(address addr, uint256 paid, uint256 amount) external {
