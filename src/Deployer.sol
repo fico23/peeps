@@ -16,7 +16,7 @@ contract PeepsDeployer {
         PAIR = pairFor(factory, peeps, weth);
     }
 
-    function deploy() external {
+    function deploy(bytes32 peepsSalt, bytes32 lockSalt) external {
 
     }
 
