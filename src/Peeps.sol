@@ -6,30 +6,23 @@ import {ILock} from "./interfaces/ILock.sol";
 import {IUniswapV2Factory} from "v2-core/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "v2-core/interfaces/IUniswapV2Pair.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
+import {IDeployer} from "./interfaces/IDeployer.sol";
 
 /// @notice Worlds best tax token
 /// @author fico23
 contract Peeps {
-    /*//////////////////////////////////////////////////////////////
-                              ERC20 STORAGE
-    //////////////////////////////////////////////////////////////*/
-    uint256 public immutable totalSupply;
-
-    // Bits Layout:
-    // - [0..159]    `paid`
-    // - [160..255] `amount`
-    mapping(address => uint256) internal _balanceOf;
-
-    mapping(address => mapping(address => uint256)) public allowance;
-
     // /*//////////////////////////////////////////////////////////////
     //                         CONSTANTS & IMMUTABLES
     // //////////////////////////////////////////////////////////////*/
+    uint256 public constant totalSupply = type(uint96).max;
     IUniswapV2Pair internal immutable UNI_V2_PAIR;
     bool internal immutable IS_TOKEN_FIRST;
     IWETH internal immutable WETH;
     ILock internal immutable LOCK;
     address internal immutable DEPLOYER;
+
+    uint256 internal immutable INITIAL_CHAIN_ID;
+    bytes32 internal immutable INITIAL_DOMAIN_SEPARATOR;
 
     uint256 internal constant HUNDRED_PERCENT = 100;
     uint256 internal constant PAID_OFFSET = 96;
@@ -43,12 +36,15 @@ contract Peeps {
     uint256 internal constant ONUS_PRECISION = 1e12;
 
     /*//////////////////////////////////////////////////////////////
-                            EIP-2612 STORAGE
+                            STORAGE
     //////////////////////////////////////////////////////////////*/
 
-    uint256 internal immutable INITIAL_CHAIN_ID;
+    // Bits Layout:
+    // - [0..159]    `paid`
+    // - [160..255] `amount`
+    mapping(address => uint256) internal _balanceOf;
 
-    bytes32 internal immutable INITIAL_DOMAIN_SEPARATOR;
+    mapping(address => mapping(address => uint256)) public allowance;
 
     mapping(address => uint256) public nonces;
 

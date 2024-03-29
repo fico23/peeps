@@ -56,7 +56,7 @@ contract PeepsTest is Test {
     event Approval(address indexed owner, address indexed spender, uint256 amount);
 
     function setUp() public {
-        deployCodeTo("Create2Deployer.sol", '', CREATE2_DEPLOYER_ADDRESS);
+        deployCodeTo("Create2Deployer.sol", "", CREATE2_DEPLOYER_ADDRESS);
         create2Deployer = Create2Deployer(payable(CREATE2_DEPLOYER_ADDRESS));
 
         // lock = new Lock();
@@ -97,15 +97,25 @@ contract PeepsTest is Test {
 
     function testHash() public {
         console2.logBytes32(keccak256(type(Lock).creationCode));
-        address deployAddress = create2Deployer.computeAddress(0x2ba7e151059304a3c1123d867d799f97b076cf31e525fd678a3b91f16c650233, keccak256(type(Lock).creationCode));
+        address deployAddress = create2Deployer.computeAddress(
+            0x2ba7e151059304a3c1123d867d799f97b076cf31e525fd678a3b91f16c650233, keccak256(type(Lock).creationCode)
+        );
         console2.log(deployAddress);
-        create2Deployer.deploy(0, 0x2ba7e151059304a3c1123d867d799f97b076cf31e525fd678a3b91f16c650233, abi.encode(type(Lock).creationCode, 0xc0dE45756d7fdaeDd4051Dcd634E463e96f53442, 0xc0dE45756d7fdaeDd4051Dcd634E463e96f53442, 0xc0dE45756d7fdaeDd4051Dcd634E463e96f53442));
+        create2Deployer.deploy(
+            0,
+            0x2ba7e151059304a3c1123d867d799f97b076cf31e525fd678a3b91f16c650233,
+            abi.encode(
+                type(Lock).creationCode,
+                0xc0dE45756d7fdaeDd4051Dcd634E463e96f53442,
+                0xc0dE45756d7fdaeDd4051Dcd634E463e96f53442,
+                0xc0dE45756d7fdaeDd4051Dcd634E463e96f53442
+            )
+        );
         console2.log(Lock(deployAddress).getTotalOnus());
     }
 
     function testBalancePacking(address addr, uint160 paid, uint96 amount) public {
-        PeepsInternal peepsInternal =
-            new PeepsInternal(address(weth), v2Factory, address(lock), TOTAL_SUPPLY);
+        PeepsInternal peepsInternal = new PeepsInternal(address(weth), v2Factory, address(lock), TOTAL_SUPPLY);
 
         peepsInternal.updateBalanceInfo(addr, paid, amount);
 
@@ -124,8 +134,7 @@ contract PeepsTest is Test {
     }
 
     function testGetOnus(uint72 totalOnus, uint256 onusableAmount) public {
-        PeepsInternal peepsInternal =
-            new PeepsInternal(address(weth), v2Factory, address(lock), TOTAL_SUPPLY);
+        PeepsInternal peepsInternal = new PeepsInternal(address(weth), v2Factory, address(lock), TOTAL_SUPPLY);
         onusableAmount = bound(onusableAmount, 1e5, TOTAL_SUPPLY);
 
         uint256 onus = peepsInternal.getOnus(totalOnus, onusableAmount);

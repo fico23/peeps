@@ -235,10 +235,13 @@ contract ERC1820Implementer is IERC1820Implementer {
     /**
      * @dev See {IERC1820Implementer-canImplementInterfaceForAddress}.
      */
-    function canImplementInterfaceForAddress(
-        bytes32 interfaceHash,
-        address account
-    ) public view virtual override returns (bytes32) {
+    function canImplementInterfaceForAddress(bytes32 interfaceHash, address account)
+        public
+        view
+        virtual
+        override
+        returns (bytes32)
+    {
         return _supportedInterfaces[interfaceHash][account] ? _ERC1820_ACCEPT_MAGIC : bytes32(0x00);
     }
 
@@ -327,7 +330,6 @@ pragma solidity ^0.8.9;
  * the address where a smart contract will be deployed, which allows
  * for interesting new mechanisms known as 'counterfactual interactions'.
  */
-
 contract Create2Deployer is Ownable, Pausable {
     /**
      * @dev Deploys a contract using `CREATE2`. The address where the
@@ -367,11 +369,11 @@ contract Create2Deployer is Ownable, Pausable {
      * contract located at `deployer`. If `deployer` is this contract's address, returns the
      * same value as {computeAddress}.
      */
-    function computeAddressWithDeployer(
-        bytes32 salt,
-        bytes32 codeHash,
-        address deployer
-    ) public pure returns (address) {
+    function computeAddressWithDeployer(bytes32 salt, bytes32 codeHash, address deployer)
+        public
+        pure
+        returns (address)
+    {
         return Create2.computeAddress(salt, codeHash, deployer);
     }
 
