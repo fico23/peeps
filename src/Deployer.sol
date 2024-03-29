@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity 0.8.22;
 
-contract PeepsDeployer {
-    address public immutable PEEPS;
-    address public immutable LOCK;
-    address public immutable WETH;
-    address public immutable FACTORY;
-    address public immutable PAIR;
+import {Create2} from "openzeppelin/utils/Create2.sol";
+import {Peeps} from "./Peeps.sol";
+import {Lock} from "./Lock.sol";
+
+contract Deployer {
+    address internal immutable PEEPS;
+    address internal immutable LOCK;
+    address internal immutable WETH;
+    address internal immutable FACTORY;
+    address internal immutable PAIR;
+    address internal immutable DEPLOYER;
 
     constructor(address peeps, address lock, address weth, address factory) {
         PEEPS = peeps;
@@ -14,10 +19,16 @@ contract PeepsDeployer {
         WETH = weth;
         FACTORY = factory;
         PAIR = pairFor(factory, peeps, weth);
+        DEPLOYER = msg.sender;
     }
 
     function deploy(bytes32 peepsSalt, bytes32 lockSalt) external {
+        Create2.deploy(0, peepsSalt, type(Peeps).creationCode);
+        Create2.deploy(0, lockSalt, type(Lock).creationCode);
+    }
 
+    function getImmutables() external returns (address, address, address, address, address, address) {
+        return (PEEPS, LOCK, WETH, FACTORY, PAIR, DEPLOYER);
     }
 
     // calculates the CREATE2 address for a pair without making any external calls

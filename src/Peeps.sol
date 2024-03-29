@@ -69,20 +69,20 @@ contract Peeps {
                                CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    constructor(address _weth, IUniswapV2Factory _factory, address lock, uint96 _totalSupply) {
+    constructor() {
         INITIAL_CHAIN_ID = block.chainid;
         INITIAL_DOMAIN_SEPARATOR = computeDomainSeparator();
 
-        WETH = IWETH(_weth);
-        IS_TOKEN_FIRST = address(this) < _weth;
+        (, address lock, address weth, address factory,, address deployer) = IDeployer(msg.sender).getImmutables();
+
+        WETH = IWETH(weth);
+        IS_TOKEN_FIRST = address(this) < weth;
 
         LOCK = ILock(lock);
 
-        totalSupply = _totalSupply;
+        UNI_V2_PAIR = IUniswapV2Pair(IUniswapV2Factory(factory).createPair(address(this), weth));
 
-        UNI_V2_PAIR = IUniswapV2Pair(_factory.createPair(address(this), _weth));
-
-        DEPLOYER = msg.sender;
+        DEPLOYER = deployer;
     }
 
     function addLiquidity() external payable {

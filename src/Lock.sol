@@ -3,6 +3,7 @@ pragma solidity 0.8.22;
 
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
+import {IDeployer} from "./interfaces/IDeployer.sol";
 
 contract Lock {
     using FixedPointMathLib for uint256;
@@ -47,11 +48,12 @@ contract Lock {
     error UnlockNotEnded();
     error Unauthorized();
 
-    constructor(address token, address uniV2Pair, address weth) {
-        TOKEN = token;
+    constructor() {
+        (address peeps,, address weth,, address uniV2Pair,) = IDeployer(msg.sender).getImmutables();
+        TOKEN = peeps;
         UNI_V2_PAIR = uniV2Pair;
         WETH = weth;
-        IS_TOKEN_FIRST = token < weth;
+        IS_TOKEN_FIRST = peeps < weth;
     }
 
     function lock(uint256 amount) external {

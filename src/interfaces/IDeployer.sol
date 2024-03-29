@@ -2,6 +2,6 @@
 pragma solidity 0.8.22;
 
 interface IDeployer {
-    function getTotalOnus() external view returns (uint256);
+    function getImmutables() external view returns (address, address, address, address, address, address);
     function notifyAmount(uint256 amount) external;
 }
