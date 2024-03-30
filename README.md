@@ -1,66 +1,35 @@
-## Foundry
+# Peeps: Worlds best Tax-on-Sell Token
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+Cringe warning: this is a ChatGPT created readme
 
-Foundry consists of:
+Welcome to the official repository of **Peeps**, the world's best tax-on-sell token ever created. Peeps stands unparalleled in every conceivable category: from its innovative design and fairness to its unparalleled gas efficiency. 
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+## Features
 
-## Documentation
+- **Innovative Design**: Crafted with precision to stand out in the crowded space of tax-on-sell tokens.
+- **Unmatched Fairness**: Every transaction is treated with the utmost fairness, ensuring an equitable experience for all users.
+- **Gas Efficiency**: Optimized for minimal gas usage, Peeps ensures that your transactions are not only fast but also cost-effective.
 
-https://book.getfoundry.sh/
+## Important Notice
 
-## Usage
+**Peeps is currently unaudited.** Users are advised to proceed with caution and conduct their own due diligence.
 
-### Build
+## Tax Function
 
-```shell
-$ forge build
-```
+Peeps introduces a unique tax function designed to optimize the balance between rewarding early adopters and ensuring long-term sustainability. The tax function is defined as follows:
 
-### Test
+- **Tax Function**: `f(x) = 420 / (6.9 + x)`
+- **Where**: `x` is the total amount of tax collected so far (capped at 420 Ether).
+- **Why these number?**: In the grand universe of numbers, it appears that 420 and 69 have been cosmically ordained as the ultimate numerical VIPs, gracing our functions with their presence like celebrities at an exclusive party.
 
-```shell
-$ forge test
-```
+This function ensures that the tax rate adjusts dynamically, providing a fair and balanced approach to taxation.
 
-### Format
+### Graphical Representation
 
-```shell
-$ forge fmt
-```
+To better understand how the tax function works, we recommend graphing the function `f(x) = 420 / (6.9 + x)` using a graphing tool. This visual representation will illustrate how the tax decreases as `x` (the total tax collected) increases, up until the cap of 420 Ether.
 
-### Gas Snapshots
+Please note that due to the limitations of Markdown, we're unable to include a graphical representation directly in this README. We encourage you to plot this function using your preferred graphing tool for a comprehensive understanding.
 
-```shell
-$ forge snapshot
-```
+---
 
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+**Join us in redefining what a tax-on-sell token can be with Peeps – where innovation, fairness, and efficiency meet.**
