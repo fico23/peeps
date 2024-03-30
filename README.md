@@ -26,9 +26,8 @@ This function ensures that the tax rate adjusts dynamically, providing a fair an
 
 ### Graphical Representation
 
-To better understand how the tax function works, we recommend graphing the function `f(x) = 420 / (6.9 + x)` using a graphing tool. This visual representation will illustrate how the tax decreases as `x` (the total tax collected) increases, up until the cap of 420 Ether.
+![Onus Chart](https://github.com/fico23/peeps/blob/main/onus_chart.png)
 
-Please note that due to the limitations of Markdown, we're unable to include a graphical representation directly in this README. We encourage you to plot this function using your preferred graphing tool for a comprehensive understanding.
 
 ---
 
