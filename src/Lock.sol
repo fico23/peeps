@@ -4,6 +4,7 @@ pragma solidity 0.8.22;
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {IDeployer} from "./interfaces/IDeployer.sol";
+import {console2} from "forge-std/Test.sol";
 
 contract Lock {
     using FixedPointMathLib for uint256;
@@ -49,7 +50,7 @@ contract Lock {
     error Unauthorized();
 
     constructor() {
-        (address peeps,, address weth,, address uniV2Pair,) = IDeployer(msg.sender).getImmutables();
+        (address peeps,, address weth,, address uniV2Pair) = IDeployer(msg.sender).getImmutables();
         TOKEN = peeps;
         UNI_V2_PAIR = uniV2Pair;
         WETH = weth;
@@ -160,6 +161,8 @@ contract Lock {
         if (msg.sender != TOKEN) revert Unauthorized();
 
         (uint256 ethPerToken, uint256 tokenLocked, uint256 totalOnus) = _readPoolInfo();
+
+        // console2.log('ethPerToken %s tokenLocked ')
 
         unchecked {
             ethPerToken += amount.divWad(tokenLocked);

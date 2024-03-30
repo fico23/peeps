@@ -9,6 +9,28 @@ import {IUniswapV2Factory} from "v2-core/interfaces/IUniswapV2Factory.sol";
 import {Lock} from "../src/Lock.sol";
 import {IUniswapV2Pair} from "v2-core/interfaces/IUniswapV2Pair.sol";
 import {Deployer} from "../src/Deployer.sol";
+import {Create2} from "openzeppelin/utils/Create2.sol";
+
+contract DeployerInternal {
+    address public immutable PEEPS;
+    address public immutable LOCK;
+    address public immutable FACTORY;
+
+    constructor(address factory) {
+        FACTORY = factory;
+        PEEPS = Create2.computeAddress(bytes32(0), keccak256(type(PeepsInternal).creationCode));
+        LOCK = Create2.computeAddress(bytes32(0), keccak256(type(Lock).creationCode));
+    }
+
+    function deploy() external {
+        Create2.deploy(0, bytes32(0), type(PeepsInternal).creationCode);
+        Create2.deploy(0, bytes32(0), type(Lock).creationCode);
+    }
+
+    function getImmutables() external view returns (address, address, address, address, address) {
+        return (address(0), address(0), address(1), FACTORY, address(0));
+    }
+}
 
 contract PeepsInternal is Peeps {
     function updateBalanceInfo(address addr, uint256 paid, uint256 amount) external {
@@ -32,6 +54,7 @@ contract PeepsTest is Test {
     address[] internal pathSell;
 
     uint256 private constant ETH_LIQUIDITY = 1 ether;
+    uint256 private constant BUY_AMOUNT = 0.1 ether;
     address private constant REVENUE_WALLET = address(0xbabe);
     uint96 private constant TOTAL_SUPPLY = type(uint96).max;
     uint256 public constant UNI_MINIMUM_LIQUIDITY = 10 ** 3;
@@ -56,48 +79,54 @@ contract PeepsTest is Test {
         weth = new WETH();
         (v2Factory, v2Router) = _deployUniswap(address(weth));
 
-        deployCodeTo("Deployer.sol", abi.encode(peeps, lock, weth, v2Factory), DEPLOYER_ADDRESS);
+        deployCodeTo("Deployer.sol", abi.encode(weth, v2Factory, PEEPS_SALT, LOCK_SALT), DEPLOYER_ADDRESS);
 
-        Deployer(DEPLOYER_ADDRESS).deploy(PEEPS_SALT, LOCK_SALT);
+        // Deployer(DEPLOYER_ADDRESS).deploy{value: ETH_LIQUIDITY + BUY_AMOUNT}();
 
-        peeps.approve(address(v2Router), TOTAL_SUPPLY);
+        // peeps.approve(address(v2Router), TOTAL_SUPPLY);
 
-        v2Pair = IUniswapV2Pair(v2Factory.getPair(address(peeps), address(weth)));
+        // v2Pair = IUniswapV2Pair(v2Factory.getPair(address(peeps), address(weth)));
 
-        pathBuy.push(address(weth));
-        pathBuy.push(address(peeps));
+        // pathBuy.push(address(weth));
+        // pathBuy.push(address(peeps));
 
-        pathSell.push(address(peeps));
-        pathSell.push(address(weth));
+        // pathSell.push(address(peeps));
+        // pathSell.push(address(weth));
 
-        vm.label(address(lock), "LOCK");
-        vm.label(address(weth), "WETH");
-        vm.label(address(v2Factory), "UNI_FACTORY");
-        vm.label(address(v2Router), "UNI_ROUTER");
-        vm.label(address(v2Pair), "UNI_PAIR");
-        vm.label(address(peeps), "PEEPS");
-        vm.label(ALICE, "ALICE");
-        vm.label(BOB, "BOB");
-        vm.label(EVE, "EVE");
-        vm.label(MALLORY, "MALLORY");
+        // vm.label(address(lock), "LOCK");
+        // vm.label(address(weth), "WETH");
+        // vm.label(address(v2Factory), "UNI_FACTORY");
+        // vm.label(address(v2Router), "UNI_ROUTER");
+        // vm.label(address(v2Pair), "UNI_PAIR");
+        // vm.label(address(peeps), "PEEPS");
+        // vm.label(ALICE, "ALICE");
+        // vm.label(BOB, "BOB");
+        // vm.label(EVE, "EVE");
+        // vm.label(MALLORY, "MALLORY");
 
-        deal(ALICE, 100 ether);
-        deal(BOB, 100 ether);
-        deal(EVE, 100 ether);
-        deal(MALLORY, 100 ether);
-        deal(address(this), 100 ether);
+        // deal(ALICE, 100 ether);
+        // deal(BOB, 100 ether);
+        // deal(EVE, 100 ether);
+        // deal(MALLORY, 100 ether);
+        // deal(address(this), 100 ether);
+    }
+
+    function testTest() public {
+        Deployer(DEPLOYER_ADDRESS).deploy{value: ETH_LIQUIDITY + BUY_AMOUNT}();
     }
 
     function testBalancePacking(address addr, uint160 paid, uint96 amount) public {
-        // PeepsInternal peepsInternal = new PeepsInternal(address(weth), v2Factory, address(lock), TOTAL_SUPPLY);
+        DeployerInternal deployerInternal = new DeployerInternal(address(v2Factory));
+        deployerInternal.deploy();
+        PeepsInternal peepsInternal = PeepsInternal(deployerInternal.PEEPS());
 
-        // peepsInternal.updateBalanceInfo(addr, paid, amount);
+        peepsInternal.updateBalanceInfo(addr, paid, amount);
 
-        // (uint256 actualPaid, uint256 actualAmount) = peepsInternal.readBalanceInfo(addr);
+        (uint256 actualPaid, uint256 actualAmount) = peepsInternal.readBalanceInfo(addr);
 
-        // assertEq(peepsInternal.balanceOf(addr), amount);
-        // assertEq(actualPaid, paid);
-        // assertEq(actualAmount, amount);
+        assertEq(peepsInternal.balanceOf(addr), amount);
+        assertEq(actualPaid, paid);
+        assertEq(actualAmount, amount);
     }
 
     function testDeploy() public {
@@ -108,64 +137,25 @@ contract PeepsTest is Test {
     }
 
     function testGetOnus(uint72 totalOnus, uint256 onusableAmount) public {
-        // PeepsInternal peepsInternal = new PeepsInternal(address(weth), v2Factory, address(lock), TOTAL_SUPPLY);
-        // onusableAmount = bound(onusableAmount, 1e5, TOTAL_SUPPLY);
+        DeployerInternal deployerInternal = new DeployerInternal(address(v2Factory));
+        deployerInternal.deploy();
+        PeepsInternal peepsInternal = PeepsInternal(deployerInternal.PEEPS());
 
-        // uint256 onus = peepsInternal.getOnus(totalOnus, onusableAmount);
+        onusableAmount = bound(onusableAmount, 1e5, TOTAL_SUPPLY);
 
-        // assertTrue(onus < onusableAmount);
-        // assertTrue(onus * WAD / onusableAmount < 60869565218e7); // max onus is 60.869565217%
-        // if (totalOnus > ONUS_CAP) {
-        //     assertTrue(onus == 0);
-        // } else {
-        //     assertTrue(onus > 0);
-        // }
-    }
+        uint256 onus = peepsInternal.getOnus(totalOnus, onusableAmount);
 
-    function testAddLiqudity(uint112 ethLiquidity) public {
-        if (_uniSqrt(uint256(TOTAL_SUPPLY) * ethLiquidity) < UNI_MINIMUM_LIQUIDITY) {
-            vm.expectRevert();
-            peeps.addLiquidity{value: ethLiquidity}();
-            return;
+        assertTrue(onus < onusableAmount);
+        assertTrue(onus * WAD / onusableAmount < 60869565218e7); // max onus is 60.869565217%
+        if (totalOnus > ONUS_CAP) {
+            assertTrue(onus == 0);
+        } else {
+            assertTrue(onus > 0);
         }
-
-        vm.expectEmit(true, true, false, true, address(peeps));
-        emit Transfer(address(0), address(v2Pair), TOTAL_SUPPLY);
-        vm.expectEmit(true, true, false, true, address(weth));
-        emit Transfer(address(0), address(peeps), ethLiquidity);
-        vm.expectEmit(true, true, false, true, address(weth));
-        emit Transfer(address(peeps), address(v2Pair), ethLiquidity);
-
-        vm.deal(address(this), ethLiquidity);
-        peeps.addLiquidity{value: ethLiquidity}();
-
-        assertEq(peeps.balanceOf(address(v2Pair)), TOTAL_SUPPLY);
-
-        (uint256 reserve0, uint256 reserve1,) = v2Pair.getReserves();
-        (uint256 reserveToken, uint256 reserveWETH) =
-            address(peeps) < address(weth) ? (reserve0, reserve1) : (reserve1, reserve0);
-
-        assertEq(reserveToken, TOTAL_SUPPLY);
-        assertEq(reserveWETH, ethLiquidity);
-    }
-
-    function testAddLiquidityUnauthorized() public {
-        vm.prank(ALICE);
-
-        vm.expectRevert(Peeps.Unauthorized.selector);
-        peeps.addLiquidity{value: ETH_LIQUIDITY}();
-    }
-
-    function testAddLiquidityAlreadyAdded() public {
-        peeps.addLiquidity{value: ETH_LIQUIDITY}();
-        vm.expectRevert(Peeps.LiquidityAlreadyAdded.selector);
-        peeps.addLiquidity{value: ETH_LIQUIDITY}();
     }
 
     function testBuy(uint256 amountEth) public {
         amountEth = bound(amountEth, 10, ETH_LIQUIDITY);
-
-        peeps.addLiquidity{value: ETH_LIQUIDITY}();
 
         uint256 expectedAmountOut = _getAmountOutPeeps(amountEth);
         _buy(ALICE, amountEth);
@@ -180,8 +170,6 @@ contract PeepsTest is Test {
     function testBuyAndTransfer(uint256 amountEth, uint8 percentageTransfer) public {
         amountEth = bound(amountEth, 10, ETH_LIQUIDITY);
         percentageTransfer = uint8(bound(percentageTransfer, 1, type(uint8).max));
-
-        peeps.addLiquidity{value: ETH_LIQUIDITY}();
 
         uint256 boughtAmount = _getAmountOutPeeps(amountEth);
         _buy(ALICE, amountEth);
@@ -215,8 +203,6 @@ contract PeepsTest is Test {
         amountEth = bound(amountEth, 1000, ETH_LIQUIDITY);
         percentageSell = uint8(bound(percentageSell, 10, type(uint8).max));
 
-        peeps.addLiquidity{value: ETH_LIQUIDITY}();
-
         uint256 boughtAmount = _getAmountOutPeeps(amountEth);
         _buy(ALICE, amountEth);
         assertEq(peeps.balanceOf(ALICE), boughtAmount);
@@ -240,8 +226,6 @@ contract PeepsTest is Test {
         uint256 bobBuyAmount = 0.1 ether;
         amountEth = bound(amountEth, 1000, ETH_LIQUIDITY - bobBuyAmount);
         percentageSell = uint8(bound(percentageSell, 10, type(uint8).max));
-
-        peeps.addLiquidity{value: ETH_LIQUIDITY}();
 
         uint256 boughtAmount = _getAmountOutPeeps(amountEth);
         _buy(ALICE, amountEth);
@@ -270,8 +254,6 @@ contract PeepsTest is Test {
         uint256 bobBuyAmount = 0.1 ether;
         amountEth = bound(amountEth, 1000, ETH_LIQUIDITY - bobBuyAmount);
         percentageSell = uint8(bound(percentageSell, 10, type(uint8).max));
-
-        peeps.addLiquidity{value: ETH_LIQUIDITY}();
 
         uint256 bobBoughtAmount = _getAmountOutPeeps(bobBuyAmount);
         _buy(BOB, bobBuyAmount); // raise price

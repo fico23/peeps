@@ -4,6 +4,8 @@ pragma solidity 0.8.22;
 import {Create2} from "openzeppelin/utils/Create2.sol";
 import {Peeps} from "./Peeps.sol";
 import {Lock} from "./Lock.sol";
+import {IWETH} from "v2-periphery/interfaces/IWETH.sol";
+import {IUniswapV2Pair} from "v2-core/interfaces/IUniswapV2Pair.sol";
 
 contract Deployer {
     address internal immutable PEEPS;
@@ -11,24 +13,53 @@ contract Deployer {
     address internal immutable WETH;
     address internal immutable FACTORY;
     address internal immutable PAIR;
-    address internal immutable DEPLOYER;
+    bytes32 internal immutable PEEPS_SALT;
+    bytes32 internal immutable LOCK_SALT;
 
-    constructor(address peeps, address lock, address weth, address factory) {
-        PEEPS = peeps;
-        LOCK = lock;
+    uint256 internal constant TOTAL_SUPPLY = type(uint96).max;
+    uint256 internal constant LIQ_AMOUNT = 1 ether;
+    uint256 internal constant BUY_AMOUNT = 0.1 ether;
+
+    constructor(address weth, address factory, bytes32 peepsSalt, bytes32 lockSalt) {
+        PEEPS = Create2.computeAddress(peepsSalt, keccak256(type(Peeps).creationCode));
+        LOCK = Create2.computeAddress(lockSalt, keccak256(type(Lock).creationCode));
         WETH = weth;
         FACTORY = factory;
-        PAIR = pairFor(factory, peeps, weth);
-        DEPLOYER = msg.sender;
+        PAIR = pairFor(factory, PEEPS, weth);
+        PEEPS_SALT = peepsSalt;
+        LOCK_SALT = lockSalt;
     }
 
-    function deploy(bytes32 peepsSalt, bytes32 lockSalt) external {
-        Create2.deploy(0, peepsSalt, type(Peeps).creationCode);
-        Create2.deploy(0, lockSalt, type(Lock).creationCode);
+    function deploy() external payable {
+        Create2.deploy(0, PEEPS_SALT, type(Peeps).creationCode);
+        Create2.deploy(0, LOCK_SALT, type(Lock).creationCode);
+
+        IWETH(WETH).deposit{value: msg.value}();
+
+        Peeps(PEEPS).transfer(PAIR, TOTAL_SUPPLY);
+        assert(IWETH(WETH).transfer(address(PAIR), LIQ_AMOUNT));
+        IUniswapV2Pair(PAIR).mint(msg.sender);
+
+        _executeSwap(BUY_AMOUNT, TOTAL_SUPPLY, LIQ_AMOUNT);
     }
 
-    function getImmutables() external returns (address, address, address, address, address, address) {
-        return (PEEPS, LOCK, WETH, FACTORY, PAIR, DEPLOYER);
+    function _executeSwap(uint256 amountIn, uint256 reserveToken, uint256 reserveWETH) internal {
+        uint256 amountOut;
+        unchecked {
+            uint256 amountInWithFee = amountIn * 997;
+            uint256 numerator = amountInWithFee * reserveToken;
+            uint256 denominator = reserveWETH * 1000 + amountInWithFee;
+            amountOut = numerator / denominator;
+        }
+        
+        Peeps(PEEPS).transfer(PAIR, amountIn);
+
+        (uint256 amount0Out, uint256 amount1Out) = PEEPS > WETH ? (uint256(0), amountOut) : (amountOut, uint256(0));
+        IUniswapV2Pair(PAIR).swap(amount0Out, amount1Out, msg.sender, new bytes(0));
+    }
+
+    function getImmutables() external view returns (address, address, address, address, address) {
+        return (PEEPS, LOCK, WETH, FACTORY, PAIR);
     }
 
     // calculates the CREATE2 address for a pair without making any external calls

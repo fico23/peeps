@@ -73,7 +73,7 @@ contract Peeps {
         INITIAL_CHAIN_ID = block.chainid;
         INITIAL_DOMAIN_SEPARATOR = computeDomainSeparator();
 
-        (, address lock, address weth, address factory,, address deployer) = IDeployer(msg.sender).getImmutables();
+        (, address lock, address weth, address factory,) = IDeployer(msg.sender).getImmutables();
 
         WETH = IWETH(weth);
         IS_TOKEN_FIRST = address(this) < weth;
@@ -82,20 +82,11 @@ contract Peeps {
 
         UNI_V2_PAIR = IUniswapV2Pair(IUniswapV2Factory(factory).createPair(address(this), weth));
 
-        DEPLOYER = deployer;
-    }
+        unchecked {
+            _balanceOf[msg.sender] = totalSupply;
+        }
 
-    function addLiquidity() external payable {
-        if (msg.sender != DEPLOYER) revert Unauthorized();
-        if (_balanceOf[address(UNI_V2_PAIR)] != 0) revert LiquidityAlreadyAdded();
-
-        _balanceOf[address(UNI_V2_PAIR)] = totalSupply;
-        emit Transfer(address(0), address(UNI_V2_PAIR), totalSupply);
-
-        WETH.deposit{value: msg.value}();
-        assert(IWETH(WETH).transfer(address(UNI_V2_PAIR), msg.value));
-
-        UNI_V2_PAIR.mint(DEPLOYER);
+        emit Transfer(address(0), msg.sender, totalSupply);
     }
 
     /*//////////////////////////////////////////////////////////////
