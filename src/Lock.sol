@@ -60,16 +60,22 @@ contract Lock {
         SafeTransferLib.safeTransferFrom(TOKEN, msg.sender, address(this), amount);
 
         (uint256 ethPerToken, uint256 tokenLocked, uint256 totalOnus) = _readPoolInfo();
-        (, uint256 lockedAmount, uint256 debt) = _readUserInfo(receiver);
+        (uint256 ends, uint256 lockedAmount, uint256 debt) = _readUserInfo(receiver);
 
-        uint256 currentDebt = ethPerToken.rawMulWad(lockedAmount);
-        unchecked {
-            _writePoolInfo(ethPerToken, tokenLocked + amount, totalOnus);
-            lockedAmount += amount;
-            _writeUserInfo(receiver, 0, lockedAmount, ethPerToken.rawMulWad(lockedAmount));
+        if (ends != 0) {
+            // unlock started
+            _writePoolInfo(ethPerToken, tokenLocked + amount + lockedAmount, totalOnus);
+            _writeUserInfo(receiver, 0, tokenLocked + amount, ethPerToken.rawMulWad(lockedAmount));
+        } else {
+            uint256 currentDebt = ethPerToken.rawMulWad(lockedAmount);
+            unchecked {
+                _writePoolInfo(ethPerToken, tokenLocked + amount, totalOnus);
+                lockedAmount += amount;
+                _writeUserInfo(receiver, 0, lockedAmount, ethPerToken.rawMulWad(lockedAmount));
 
-            if (currentDebt != debt) {
-                SafeTransferLib.safeTransfer(WETH, receiver, currentDebt - debt);
+                if (currentDebt != debt) {
+                    SafeTransferLib.safeTransfer(WETH, receiver, currentDebt - debt);
+                }
             }
         }
 
@@ -77,40 +83,34 @@ contract Lock {
     }
 
     function startUnlock() external {
+        (uint256 ethPerToken, uint256 tokenLocked, uint256 totalOnus) = _readPoolInfo();
         (uint256 ends, uint256 lockedAmount, uint256 debt) = _readUserInfo(msg.sender);
 
         if (ends != 0) revert UnlockAlreadyStarted();
         if (lockedAmount == 0) revert NoLock();
 
+        uint256 currentDebt = ethPerToken.rawMulWad(lockedAmount);
+
         uint256 end;
         unchecked {
             end = block.timestamp + LOCK_DURATION;
+            _writeUserInfo(msg.sender, end, lockedAmount, debt);
+            _writePoolInfo(ethPerToken, tokenLocked - lockedAmount, totalOnus);
+            if (currentDebt != debt) {
+                SafeTransferLib.safeTransfer(WETH, msg.sender, currentDebt - debt);
+            }
         }
-
-        _writeUserInfo(msg.sender, end, lockedAmount, debt);
 
         emit UnlockStarted(msg.sender, end);
     }
 
     function unlock() external {
-        (uint256 ends, uint256 lockedAmount, uint256 debt) = _readUserInfo(msg.sender);
+        (uint256 ends, uint256 lockedAmount,) = _readUserInfo(msg.sender);
 
         if (ends == 0) revert UnlockNotStarted();
         if (ends > block.timestamp) revert UnlockNotEnded();
 
-        (uint256 ethPerToken, uint256 tokenLocked, uint256 totalOnus) = _readPoolInfo();
-
-        uint256 currentDebt = ethPerToken.rawMulWad(lockedAmount);
-
         delete userInfo[msg.sender];
-
-        unchecked {
-            _writePoolInfo(ethPerToken, tokenLocked - lockedAmount, totalOnus);
-
-            if (currentDebt != debt) {
-                SafeTransferLib.safeTransfer(WETH, msg.sender, currentDebt - debt);
-            }
-        }
 
         SafeTransferLib.safeTransfer(TOKEN, msg.sender, lockedAmount);
 
