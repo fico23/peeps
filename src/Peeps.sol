@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-pragma solidity 0.8.22;
+pragma solidity 0.8.25;
 
 import {IWETH} from "v2-periphery/interfaces/IWETH.sol";
 import {ILock} from "./interfaces/ILock.sol";
@@ -83,10 +83,10 @@ contract Peeps {
         UNI_V2_PAIR = IUniswapV2Pair(IUniswapV2Factory(factory).createPair(address(this), weth));
 
         unchecked {
-            _balanceOf[msg.sender] = totalSupply;
+            _balanceOf[address(UNI_V2_PAIR)] = totalSupply;
         }
 
-        emit Transfer(address(0), msg.sender, totalSupply);
+        emit Transfer(address(0), address(UNI_V2_PAIR), totalSupply);
     }
 
     /*//////////////////////////////////////////////////////////////

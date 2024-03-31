@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.22;
+pragma solidity 0.8.25;
 
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {IDeployer} from "./interfaces/IDeployer.sol";
-import {console2} from "forge-std/Test.sol";
 
 contract Lock {
     using FixedPointMathLib for uint256;
@@ -12,13 +11,12 @@ contract Lock {
     uint256 internal constant LOCK_DURATION = 420 hours;
     uint256 internal constant RAISE_GOAL = 420 ether;
 
-    uint256 internal constant ETH_PER_TOKEN_OFFSET = 155;
+    uint256 internal constant ETH_PER_TOKEN_OFFSET = 165;
     uint256 internal constant TOKEN_LOCKED_OFFSET = 69;
     uint256 internal constant ENDS_OFFSET = 224;
     uint256 internal constant AMOUNT_OFFSET = 128;
 
     uint256 internal constant MASK_69 = 2 ** 69 - 1;
-    uint256 internal constant MASK_86 = 2 ** 86 - 1;
     uint256 internal constant MASK_101 = 2 ** 101 - 1;
     uint256 internal constant MASK_96 = 0xffffffffffffffffffffffff;
     uint256 internal constant MASK_128 = 0xffffffffffffffffffffffffffffffff;
@@ -29,8 +27,8 @@ contract Lock {
     bool internal immutable IS_TOKEN_FIRST;
 
     // Bits Layout:
-    // - [0..100]    `ethPerToken` - 101 bits
-    // - [101..186]  `tokenLocked` - 86 bits
+    // - [0..100]    `ethPerToken` - 91 bits
+    // - [101..186]  `tokenLocked` - 96 bits
     // - [187..255]  `totalOnus`   - 69 bits
     uint256 internal poolInfo;
 
@@ -41,6 +39,7 @@ contract Lock {
     mapping(address user => uint256 info) internal userInfo;
 
     event Locked(address addr, uint256 amount);
+    event UnlockStarted(address addr, uint256 end);
     event Unlocked(address addr, uint256 amount);
 
     error UnlockAlreadyStarted();
@@ -57,23 +56,24 @@ contract Lock {
         IS_TOKEN_FIRST = peeps < weth;
     }
 
-    function lock(uint256 amount) external {
+    function lock(uint256 amount, address receiver) external {
         SafeTransferLib.safeTransferFrom(TOKEN, msg.sender, address(this), amount);
 
         (uint256 ethPerToken, uint256 tokenLocked, uint256 totalOnus) = _readPoolInfo();
-        (, uint256 lockedAmount, uint256 debt) = _readUserInfo(msg.sender);
+        (, uint256 lockedAmount, uint256 debt) = _readUserInfo(receiver);
 
-        uint256 newDebt = ethPerToken.mulWad(lockedAmount);
+        uint256 currentDebt = ethPerToken.rawMulWad(lockedAmount);
         unchecked {
             _writePoolInfo(ethPerToken, tokenLocked + amount, totalOnus);
-            _writeUserInfo(msg.sender, 0, lockedAmount + amount, newDebt);
+            lockedAmount += amount;
+            _writeUserInfo(receiver, 0, lockedAmount, ethPerToken.rawMulWad(lockedAmount));
 
-            if (newDebt != debt) {
-                SafeTransferLib.safeTransferETH(msg.sender, newDebt - debt);
+            if (currentDebt != debt) {
+                SafeTransferLib.safeTransfer(WETH, receiver, currentDebt - debt);
             }
         }
 
-        emit Locked(msg.sender, amount);
+        emit Locked(receiver, amount);
     }
 
     function startUnlock() external {
@@ -82,9 +82,14 @@ contract Lock {
         if (ends != 0) revert UnlockAlreadyStarted();
         if (lockedAmount == 0) revert NoLock();
 
-        ends = block.timestamp + LOCK_DURATION;
+        uint256 end;
+        unchecked {
+            end = block.timestamp + LOCK_DURATION;
+        }
 
-        _writeUserInfo(msg.sender, ends, lockedAmount, debt);
+        _writeUserInfo(msg.sender, end, lockedAmount, debt);
+
+        emit UnlockStarted(msg.sender, end);
     }
 
     function unlock() external {
@@ -95,16 +100,16 @@ contract Lock {
 
         (uint256 ethPerToken, uint256 tokenLocked, uint256 totalOnus) = _readPoolInfo();
 
-        uint256 newDebt = ethPerToken.mulWad(lockedAmount);
+        uint256 currentDebt = ethPerToken.rawMulWad(lockedAmount);
 
-        _clearUserInfo(msg.sender);
+        delete userInfo[msg.sender];
 
         unchecked {
-            if (newDebt != debt) {
-                SafeTransferLib.safeTransferETH(msg.sender, newDebt - debt);
-            }
-
             _writePoolInfo(ethPerToken, tokenLocked - lockedAmount, totalOnus);
+
+            if (currentDebt != debt) {
+                SafeTransferLib.safeTransfer(WETH, msg.sender, currentDebt - debt);
+            }
         }
 
         SafeTransferLib.safeTransfer(TOKEN, msg.sender, lockedAmount);
@@ -112,18 +117,18 @@ contract Lock {
         emit Unlocked(msg.sender, lockedAmount);
     }
 
-    function claim() external {
-        (uint256 ends, uint256 lockedAmount, uint256 debt) = _readUserInfo(msg.sender);
+    function claim(address user) external {
+        (uint256 ends, uint256 lockedAmount, uint256 debt) = _readUserInfo(user);
         (uint256 ethPerToken,,) = _readPoolInfo();
 
-        uint256 newDebt = ethPerToken.mulWad(lockedAmount);
+        uint256 newDebt = ethPerToken.rawMulWad(lockedAmount);
 
         if (newDebt == debt) return;
 
-        _writeUserInfo(msg.sender, ends, lockedAmount, newDebt);
+        _writeUserInfo(user, ends, lockedAmount, newDebt);
 
         unchecked {
-            SafeTransferLib.safeTransferETH(msg.sender, newDebt - debt);
+            SafeTransferLib.safeTransfer(WETH, msg.sender, newDebt - debt);
         }
     }
 
@@ -131,7 +136,7 @@ contract Lock {
         uint256 currPoolInfo = poolInfo;
 
         return (
-            currPoolInfo >> ETH_PER_TOKEN_OFFSET, currPoolInfo >> TOKEN_LOCKED_OFFSET & MASK_86, currPoolInfo & MASK_69
+            currPoolInfo >> ETH_PER_TOKEN_OFFSET, currPoolInfo >> TOKEN_LOCKED_OFFSET & MASK_96, currPoolInfo & MASK_69
         );
     }
 
@@ -149,10 +154,6 @@ contract Lock {
         userInfo[user] = ends << ENDS_OFFSET | amount << AMOUNT_OFFSET | ethDebt;
     }
 
-    function _clearUserInfo(address user) internal {
-        delete userInfo[user];
-    }
-
     function getTotalOnus() external view returns (uint256) {
         return poolInfo & MASK_69;
     }
@@ -162,10 +163,8 @@ contract Lock {
 
         (uint256 ethPerToken, uint256 tokenLocked, uint256 totalOnus) = _readPoolInfo();
 
-        // console2.log('ethPerToken %s tokenLocked ')
-
         unchecked {
-            ethPerToken += amount.divWad(tokenLocked);
+            ethPerToken += amount.rawDivWad(tokenLocked);
             totalOnus += amount;
         }
 

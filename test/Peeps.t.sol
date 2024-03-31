@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+pragma solidity 0.8.25;
 
 import {Test, console2} from "forge-std/Test.sol";
 import {Peeps} from "../src/Peeps.sol";
@@ -43,12 +43,12 @@ contract PeepsInternal is Peeps {
 }
 
 contract PeepsTest is Test {
-    Peeps peeps = Peeps(0x0000009C10f2401A27D1dB59F0EB197c32aFE2C5);
+    Peeps peeps;
     WETH weth;
     IUniswapV2Factory v2Factory;
     IUniswapV2Router02 v2Router;
     IUniswapV2Pair v2Pair;
-    Lock lock = Lock(0x0000002a40A8D60eb00e09aB31d2D0af1cC37Bd8);
+    Lock lock;
 
     address[] internal pathBuy;
     address[] internal pathSell;
@@ -66,6 +66,8 @@ contract PeepsTest is Test {
     address private constant DEPLOYER_ADDRESS = 0x29C945F528487655BD6315a198417b7f27FbfE1f;
     bytes32 private constant LOCK_SALT = 0x794b5e2e754365de50fddce65a41a9504034eeb3c8e1fe2f960738932a1bd9f4;
     bytes32 private constant PEEPS_SALT = 0xd2d20c58bc613be2b41b06f8f2fe0c6546f851043dd860585efadd44efae992b;
+    uint256 internal constant INITIAL_BUY_AMOUNT = 7182911523753891477745141264;
+    uint256 internal constant INITIAL_PEEPS_RESERVE = TOTAL_SUPPLY - INITIAL_BUY_AMOUNT;
 
     uint256 internal constant K = 420e28;
     uint256 internal constant X0 = 69e17;
@@ -81,38 +83,37 @@ contract PeepsTest is Test {
 
         deployCodeTo("Deployer.sol", abi.encode(weth, v2Factory, PEEPS_SALT, LOCK_SALT), DEPLOYER_ADDRESS);
 
-        // Deployer(DEPLOYER_ADDRESS).deploy{value: ETH_LIQUIDITY + BUY_AMOUNT}();
-
-        // peeps.approve(address(v2Router), TOTAL_SUPPLY);
-
-        // v2Pair = IUniswapV2Pair(v2Factory.getPair(address(peeps), address(weth)));
-
-        // pathBuy.push(address(weth));
-        // pathBuy.push(address(peeps));
-
-        // pathSell.push(address(peeps));
-        // pathSell.push(address(weth));
-
-        // vm.label(address(lock), "LOCK");
-        // vm.label(address(weth), "WETH");
-        // vm.label(address(v2Factory), "UNI_FACTORY");
-        // vm.label(address(v2Router), "UNI_ROUTER");
-        // vm.label(address(v2Pair), "UNI_PAIR");
-        // vm.label(address(peeps), "PEEPS");
-        // vm.label(ALICE, "ALICE");
-        // vm.label(BOB, "BOB");
-        // vm.label(EVE, "EVE");
-        // vm.label(MALLORY, "MALLORY");
-
-        // deal(ALICE, 100 ether);
-        // deal(BOB, 100 ether);
-        // deal(EVE, 100 ether);
-        // deal(MALLORY, 100 ether);
-        // deal(address(this), 100 ether);
-    }
-
-    function testTest() public {
         Deployer(DEPLOYER_ADDRESS).deploy{value: ETH_LIQUIDITY + BUY_AMOUNT}();
+
+        (address peeps_, address lock_,,,) = Deployer(DEPLOYER_ADDRESS).getImmutables();
+        peeps = Peeps(peeps_);
+        lock = Lock(lock_);
+
+        v2Pair = IUniswapV2Pair(v2Factory.getPair(address(peeps), address(weth)));
+
+        pathBuy.push(address(weth));
+        pathBuy.push(address(peeps));
+
+        pathSell.push(address(peeps));
+        pathSell.push(address(weth));
+
+        vm.label(address(lock), "LOCK");
+        vm.label(address(weth), "WETH");
+        vm.label(address(v2Factory), "UNI_FACTORY");
+        vm.label(address(v2Router), "UNI_ROUTER");
+        vm.label(address(v2Pair), "UNI_PAIR");
+        vm.label(address(peeps), "PEEPS");
+        vm.label(DEPLOYER_ADDRESS, "DEPLOYER");
+        vm.label(ALICE, "ALICE");
+        vm.label(BOB, "BOB");
+        vm.label(EVE, "EVE");
+        vm.label(MALLORY, "MALLORY");
+
+        deal(ALICE, 100 ether);
+        deal(BOB, 100 ether);
+        deal(EVE, 100 ether);
+        deal(MALLORY, 100 ether);
+        deal(address(this), 100 ether);
     }
 
     function testBalancePacking(address addr, uint160 paid, uint96 amount) public {
@@ -133,7 +134,8 @@ contract PeepsTest is Test {
         assertEq(peeps.totalSupply(), TOTAL_SUPPLY);
         assertEq(peeps.balanceOf(address(this)), 0);
         assertEq(peeps.balanceOf(address(peeps)), 0);
-        assertEq(peeps.balanceOf(address(v2Pair)), 0);
+        assertEq(peeps.balanceOf(address(lock)), INITIAL_BUY_AMOUNT);
+        assertEq(peeps.balanceOf(address(v2Pair)), TOTAL_SUPPLY - INITIAL_BUY_AMOUNT);
     }
 
     function testGetOnus(uint72 totalOnus, uint256 onusableAmount) public {
@@ -206,7 +208,7 @@ contract PeepsTest is Test {
         uint256 boughtAmount = _getAmountOutPeeps(amountEth);
         _buy(ALICE, amountEth);
         assertEq(peeps.balanceOf(ALICE), boughtAmount);
-        assertEq(peeps.balanceOf(address(v2Pair)), TOTAL_SUPPLY - boughtAmount);
+        assertEq(peeps.balanceOf(address(v2Pair)), INITIAL_PEEPS_RESERVE - boughtAmount);
 
         uint256 sellAmount = boughtAmount * percentageSell / type(uint8).max;
         uint256 initialPaidAmount = amountEth * WAD;
@@ -215,7 +217,7 @@ contract PeepsTest is Test {
 
         assertEq(peeps.balanceOf(ALICE), boughtAmount - sellAmount);
         assertEq(weth.balanceOf(address(lock)), 0); // no tax since no profit
-        assertEq(peeps.balanceOf(address(v2Pair)), TOTAL_SUPPLY - boughtAmount + sellAmount);
+        assertEq(peeps.balanceOf(address(v2Pair)), INITIAL_PEEPS_RESERVE - boughtAmount + sellAmount);
 
         (uint256 alicePaid, uint256 aliceAmount) = peeps.readBalanceInfo(ALICE);
         assertEq(alicePaid, initialPaidAmount - initialPaidAmount * sellAmount / boughtAmount);
@@ -243,7 +245,7 @@ contract PeepsTest is Test {
 
         assertEq(peeps.balanceOf(ALICE), boughtAmount - sellAmount);
         assertEq(weth.balanceOf(address(lock)), onusWorthEth); // taxed on profit
-        assertEq(peeps.balanceOf(address(v2Pair)), TOTAL_SUPPLY - boughtAmount - bobBoughtAmount + sellAmount);
+        assertEq(peeps.balanceOf(address(v2Pair)), INITIAL_PEEPS_RESERVE - boughtAmount - bobBoughtAmount + sellAmount);
 
         (uint256 alicePaid, uint256 aliceAmount) = peeps.readBalanceInfo(ALICE);
         assertEq(alicePaid, initialPaidAmount - initialPaidAmount * sellAmount / boughtAmount);
@@ -272,7 +274,7 @@ contract PeepsTest is Test {
 
         assertEq(peeps.balanceOf(ALICE), boughtAmount - sellAmount);
         assertEq(weth.balanceOf(address(lock)), onusBefore); // no tax since no profit
-        assertEq(peeps.balanceOf(address(v2Pair)), TOTAL_SUPPLY - boughtAmount + sellAmount);
+        assertEq(peeps.balanceOf(address(v2Pair)), INITIAL_PEEPS_RESERVE - boughtAmount + sellAmount);
 
         (uint256 alicePaid, uint256 aliceAmount) = peeps.readBalanceInfo(ALICE);
         assertEq(alicePaid, initialPaidAmount - initialPaidAmount * sellAmount / boughtAmount);

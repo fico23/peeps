@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-pragma solidity 0.8.22;
+pragma solidity 0.8.25;
 
 import {Create2} from "openzeppelin/utils/Create2.sol";
 import {Peeps} from "./Peeps.sol";
@@ -13,12 +13,14 @@ contract Deployer {
     address internal immutable WETH;
     address internal immutable FACTORY;
     address internal immutable PAIR;
+    address internal immutable DEPLOYER;
     bytes32 internal immutable PEEPS_SALT;
     bytes32 internal immutable LOCK_SALT;
 
     uint256 internal constant TOTAL_SUPPLY = type(uint96).max;
     uint256 internal constant LIQ_AMOUNT = 1 ether;
-    uint256 internal constant BUY_AMOUNT = 0.1 ether;
+    uint256 internal constant ETH_BUY_AMOUNT = 0.1 ether;
+    uint256 internal constant INITIAL_BUY_AMOUNT = 7182911523753891477745141264;
 
     constructor(address weth, address factory, bytes32 peepsSalt, bytes32 lockSalt) {
         PEEPS = Create2.computeAddress(peepsSalt, keccak256(type(Peeps).creationCode));
@@ -28,34 +30,27 @@ contract Deployer {
         PAIR = pairFor(factory, PEEPS, weth);
         PEEPS_SALT = peepsSalt;
         LOCK_SALT = lockSalt;
+        DEPLOYER = msg.sender;
     }
 
     function deploy() external payable {
+        require(msg.sender == DEPLOYER, "YOU'RE NOT HIM");
+
         Create2.deploy(0, PEEPS_SALT, type(Peeps).creationCode);
         Create2.deploy(0, LOCK_SALT, type(Lock).creationCode);
 
         IWETH(WETH).deposit{value: msg.value}();
 
-        Peeps(PEEPS).transfer(PAIR, TOTAL_SUPPLY);
         assert(IWETH(WETH).transfer(address(PAIR), LIQ_AMOUNT));
         IUniswapV2Pair(PAIR).mint(msg.sender);
 
-        _executeSwap(BUY_AMOUNT, TOTAL_SUPPLY, LIQ_AMOUNT);
-    }
+        assert(IWETH(WETH).transfer(address(PAIR), ETH_BUY_AMOUNT));
+        (uint256 amount0Out, uint256 amount1Out) =
+            PEEPS > WETH ? (uint256(0), INITIAL_BUY_AMOUNT) : (INITIAL_BUY_AMOUNT, uint256(0));
+        IUniswapV2Pair(PAIR).swap(amount0Out, amount1Out, address(this), new bytes(0));
 
-    function _executeSwap(uint256 amountIn, uint256 reserveToken, uint256 reserveWETH) internal {
-        uint256 amountOut;
-        unchecked {
-            uint256 amountInWithFee = amountIn * 997;
-            uint256 numerator = amountInWithFee * reserveToken;
-            uint256 denominator = reserveWETH * 1000 + amountInWithFee;
-            amountOut = numerator / denominator;
-        }
-        
-        Peeps(PEEPS).transfer(PAIR, amountIn);
-
-        (uint256 amount0Out, uint256 amount1Out) = PEEPS > WETH ? (uint256(0), amountOut) : (amountOut, uint256(0));
-        IUniswapV2Pair(PAIR).swap(amount0Out, amount1Out, msg.sender, new bytes(0));
+        Peeps(PEEPS).approve(LOCK, INITIAL_BUY_AMOUNT);
+        Lock(LOCK).lock(INITIAL_BUY_AMOUNT, DEPLOYER);
     }
 
     function getImmutables() external view returns (address, address, address, address, address) {
